@@ -1,0 +1,12 @@
+{% extends "admin/index.html" %}
+{% load i18n %}
+
+{% block content %}
+<div class="module">
+  <h2>Рассылки</h2>
+  <p>
+    <a href="{% url 'admin:mailings_template_run_mailing' %}">Запуск рассылки</a> — выбрать шаблон и получателей, поставить отправку в очередь.
+  </p>
+</div>
+{{ block.super }}
+{% endblock %}

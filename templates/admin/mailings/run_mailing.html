@@ -1,0 +1,158 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block content %}
+<form method="post" id="run-mailing-form">
+  {% csrf_token %}
+  <fieldset class="module">
+    <h2>Шаблон</h2>
+    <div class="form-row">
+      <label for="id_template">Выберите шаблон:</label>
+      <select name="template_id" id="id_template">
+        <option value="">---------</option>
+        {% for t in templates %}
+        <option value="{{ t.pk }}" {% if selected_template_id == t.pk|stringformat:"s" %}selected{% endif %}>{{ t.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </fieldset>
+
+  <fieldset class="module">
+    <h2>Фильтры из Bitrix snapshot</h2>
+    <p>Фильтры добавляют получателей автоматически по данным клиентов/компаний из snapshot.</p>
+    <div class="form-row">
+      <label for="id_city_filter">Город (в адресе snapshot):</label>
+      <input
+        type="text"
+        name="city_filter"
+        id="id_city_filter"
+        class="run-mailing-search"
+        value="{{ selected_city_filter }}"
+        placeholder="Например: Москва, мск, Казань"
+        autocomplete="off"
+      >
+      <p class="help" style="margin:0.25em 0 0;color:#666;">
+        Поиск подстроки в поле адреса, без учёта регистра. Пусто — без фильтра по городу.
+      </p>
+    </div>
+    <div class="form-row">
+      <label>Тип чата:</label>
+      <label><input type="checkbox" name="chat_kinds" value="private" {% if 'private' in selected_chat_kinds %}checked{% endif %}> Личные</label>
+      <label><input type="checkbox" name="chat_kinds" value="group" {% if 'group' in selected_chat_kinds %}checked{% endif %}> Группы/каналы</label>
+    </div>
+    <div class="form-row">
+      <label for="id_sleep_status">Статус клиента:</label>
+      <select name="sleep_status" id="id_sleep_status">
+        <option value="">Любой</option>
+        <option value="awake" {% if selected_sleep_status == 'awake' %}selected{% endif %}>Не спящий (последняя покупка &lt; 30 дней)</option>
+        <option value="sleeping" {% if selected_sleep_status == 'sleeping' %}selected{% endif %}>Спящий (>= 30 дней или нет даты)</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label>Тип компании (сегмент):</label>
+      <label><input type="checkbox" name="company_types" value="1163" {% if '1163' in selected_company_types %}checked{% endif %}> Дистрибьютер (ID 1163)</label>
+      <label><input type="checkbox" name="company_types" value="1165" {% if '1165' in selected_company_types %}checked{% endif %}> Дилер (ID 1165)</label>
+      <label><input type="checkbox" name="company_types" value="1167" {% if '1167' in selected_company_types %}checked{% endif %}> Дизайнер (ID 1167)</label>
+      <label><input type="checkbox" name="company_types" value="1169" {% if '1169' in selected_company_types %}checked{% endif %}> Розничный (ID 1169)</label>
+      <label><input type="checkbox" name="company_types" value="1171" {% if '1171' in selected_company_types %}checked{% endif %}> Поставщик (ID 1171)</label>
+    </div>
+    <div class="form-row">
+      <label>Потенциал МойСклад:</label>
+      <label><input type="checkbox" name="potentials" value="579" {% if '579' in selected_potentials %}checked{% endif %}> A (ID 579)</label>
+      <label><input type="checkbox" name="potentials" value="581" {% if '581' in selected_potentials %}checked{% endif %}> B (ID 581)</label>
+      <label><input type="checkbox" name="potentials" value="583" {% if '583' in selected_potentials %}checked{% endif %}> C (ID 583)</label>
+      <label><input type="checkbox" name="potentials" value="585" {% if '585' in selected_potentials %}checked{% endif %}> Не присвоен (ID 585)</label>
+    </div>
+  </fieldset>
+
+  {% if preview %}
+  <fieldset class="module" id="mailing-preview-block">
+    <h2>Предпросмотр получателей</h2>
+    <p>
+      Найдено: <strong>{{ preview.total_count }}</strong>
+      (партнёры: {{ preview.partners_count }}, chat id: {{ preview.chat_ids_count }}).
+      В списке ниже — до {{ preview.recipients_count }} для выборочной отправки.
+    </p>
+
+    {% if preview.recipients %}
+    <p class="run-mailing-preview-actions">
+      <button type="button" class="run-mailing-search-btn" id="preview-select-all">Выбрать всех</button>
+      <button type="button" class="run-mailing-search-btn" id="preview-select-none">Снять всех</button>
+    </p>
+    <ul class="run-mailing-list" id="preview-recipients-list">
+      {% for item in preview.recipients %}
+      <li>
+        <label>
+          <input
+            type="checkbox"
+            class="preview-recipient-cb"
+            name="{{ item.input_name }}"
+            value="{{ item.input_value }}"
+            {% if item.checked %}checked{% endif %}
+          >
+          <strong>{{ item.name }}</strong>
+          — <code>{{ item.chat_id }}</code>
+          <span style="color:#666">({{ item.meta }})</span>
+        </label>
+      </li>
+      {% endfor %}
+    </ul>
+    {% if preview.recipients_truncated %}
+    <p>Показаны первые {{ preview.recipients_count }} получателей. Полная рассылка через «Поставить в очередь» — по всем из фильтра.</p>
+    {% endif %}
+
+    <div class="submit-row run-mailing-preview-send">
+      <button type="submit" name="_action" value="send_selected" class="default">Отправить выбранным (тест)</button>
+    </div>
+    {% else %}
+    <p>Получателей для выбора нет.</p>
+    {% endif %}
+
+    {% if preview.excluded %}
+    <h3>Отсеяны из snapshot</h3>
+    <ul class="run-mailing-list">
+      {% for item in preview.excluded %}
+      <li>
+        [{{ item.kind }} #{{ item.entity_id }}]
+        {{ item.name }}
+        —
+        <span style="color:#666">{{ item.reason }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% if preview.excluded_truncated %}
+    <p>Показаны первые 200 отсеянных.</p>
+    {% endif %}
+    {% endif %}
+  </fieldset>
+  {% endif %}
+
+  <div class="submit-row">
+    <button type="submit" name="_action" value="preview" class="button" formnovalidate>Предпросмотр получателей</button>
+    <button type="submit" name="_action" value="queue" class="default">Поставить рассылку в очередь (всем из фильтра)</button>
+  </div>
+
+  <p class="run-mailing-hint">
+    «Отправить выбранным» (в блоке предпросмотра) — только отмеченные для теста.
+    «Поставить в очередь» — всех, кого нашли фильтры snapshot.
+  </p>
+</form>
+
+<script>
+(function() {
+  var selectAllBtn = document.getElementById('preview-select-all');
+  var selectNoneBtn = document.getElementById('preview-select-none');
+  if (selectAllBtn) {
+    selectAllBtn.addEventListener('click', function() {
+      document.querySelectorAll('.preview-recipient-cb').forEach(function(cb) { cb.checked = true; });
+    });
+  }
+  if (selectNoneBtn) {
+    selectNoneBtn.addEventListener('click', function() {
+      document.querySelectorAll('.preview-recipient-cb').forEach(function(cb) { cb.checked = false; });
+    });
+  }
+
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,763 @@
+/* Современная тема для админки рассылок — без жёлтого, читаемо в светлой и тёмной теме */
+
+:root,
+html[data-theme="light"] {
+  --admin-bg: #e2e8f0;
+  --admin-card: #f1f5f9;
+  --admin-border: #cbd5e1;
+  --admin-accent: #6366f1;
+  --admin-accent-hover: #4f46e5;
+  --admin-accent-soft: rgba(99, 102, 241, 0.12);
+  --admin-text: #1e293b;
+  --admin-text-muted: #64748b;
+  --admin-success: #10b981;
+  --admin-error: #ef4444;
+  --admin-radius: 12px;
+  --admin-radius-sm: 8px;
+  --admin-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --admin-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  /* Переопределяем жёлтые переменные Django */
+  --header-color: #1e293b;
+  --header-link-color: #475569;
+  --header-bg: #f1f5f9;
+  --accent: #6366f1;
+  --selected-row: rgba(99, 102, 241, 0.2);
+  --breadcrumbs-fg: #64748b;
+  --breadcrumbs-link-fg: #475569;
+  --breadcrumbs-bg: transparent;
+  --message-warning-bg: rgba(100, 116, 139, 0.2);
+}
+
+/* Тёмная тема — полный набор переменных, контрастно и без жёлтого */
+html[data-theme="dark"] {
+  /* Наши переменные — чтобы весь интерфейс переключился в тёмный */
+  --admin-bg: #0f172a;
+  --admin-card: #1e293b;
+  --admin-border: #334155;
+  --admin-accent: #818cf8;
+  --admin-accent-hover: #a5b4fc;
+  --admin-accent-soft: rgba(129, 140, 248, 0.2);
+  --admin-text: #f1f5f9;
+  --admin-text-muted: #94a3b8;
+  --admin-success: #34d399;
+  --admin-error: #f87171;
+  --admin-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --admin-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  /* Переменные Django для шапки, сайдбара, ссылок */
+  --header-color: #f1f5f9;
+  --header-link-color: #cbd5e1;
+  --header-bg: #1e293b;
+  --accent: #818cf8;
+  --selected-row: rgba(129, 140, 248, 0.25);
+  --breadcrumbs-fg: #94a3b8;
+  --breadcrumbs-link-fg: #cbd5e1;
+  --breadcrumbs-bg: transparent;
+  --body-fg: #e2e8f0;
+  --body-bg: #0f172a;
+  --body-quiet-color: #94a3b8;
+  --body-medium-color: #cbd5e1;
+  --body-loud-color: #f8fafc;
+  --darkened-bg: #1e293b;
+  --hairline-color: #334155;
+  --border-color: #334155;
+  --link-fg: #93c5fd;
+  --link-hover-color: #60a5fa;
+  --link-selected-fg: #818cf8;
+}
+
+/* Тёмная тема — контент и формы */
+html[data-theme="dark"] #content,
+html[data-theme="dark"] .main > .content {
+  background: var(--admin-bg) !important;
+  color: var(--admin-text) !important;
+}
+
+html[data-theme="dark"] input[type="text"],
+html[data-theme="dark"] input[type="password"],
+html[data-theme="dark"] input[type="email"],
+html[data-theme="dark"] input[type="number"],
+html[data-theme="dark"] textarea,
+html[data-theme="dark"] select {
+  background: var(--admin-card) !important;
+  border-color: var(--admin-border) !important;
+  color: var(--admin-text) !important;
+}
+
+html[data-theme="dark"] #changelist .results thead th {
+  background: var(--admin-card) !important;
+  color: var(--admin-text-muted) !important;
+  border-color: var(--admin-border) !important;
+}
+
+html[data-theme="dark"] #changelist .results td,
+html[data-theme="dark"] #changelist .results th {
+  border-color: var(--admin-border) !important;
+  color: var(--admin-text) !important;
+}
+
+html[data-theme="dark"] #changelist .results tbody tr:hover {
+  background: var(--admin-card) !important;
+}
+
+html[data-theme="dark"] #changelist-filter a {
+  color: var(--admin-text-muted) !important;
+}
+
+html[data-theme="dark"] #changelist-filter a:hover,
+html[data-theme="dark"] #changelist-filter li.selected a {
+  color: var(--admin-accent) !important;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+  background: var(--admin-bg) !important;
+  color: var(--admin-text) !important;
+  line-height: 1.5 !important;
+}
+
+/* Header — без жёлтого текста */
+#header {
+  background: var(--header-bg, var(--admin-card)) !important;
+  color: var(--header-color, var(--admin-text)) !important;
+  border-bottom: 1px solid var(--admin-border) !important;
+  box-shadow: var(--admin-shadow) !important;
+  padding: 0 24px !important;
+  min-height: 52px !important;
+}
+
+#header a:link,
+#header a:visited,
+#logout-form button {
+  color: var(--header-link-color, var(--admin-text-muted)) !important;
+}
+
+#branding {
+  padding: 0 !important;
+}
+
+#branding h1 {
+  margin: 0 !important;
+  padding: 0 !important;
+  font-size: 1.25rem !important;
+  font-weight: 700 !important;
+}
+
+#branding h1 a {
+  color: var(--header-color, var(--admin-text)) !important;
+  text-decoration: none !important;
+  padding: 14px 0 !important;
+  display: inline-block !important;
+}
+
+#branding h1 a:hover {
+  color: var(--admin-accent) !important;
+}
+
+#user-tools {
+  padding: 12px 0 !important;
+  font-size: 0.875rem !important;
+}
+
+#user-tools a {
+  color: var(--header-link-color, var(--admin-text-muted)) !important;
+  text-decoration: none !important;
+  font-weight: 500 !important;
+}
+
+#user-tools a:hover {
+  color: var(--admin-accent) !important;
+}
+
+a.admin-run-mailing-link {
+  color: var(--admin-accent) !important;
+  font-weight: 600 !important;
+  background: var(--admin-accent-soft) !important;
+  padding: 6px 12px !important;
+  border-radius: var(--admin-radius-sm) !important;
+}
+
+a.admin-run-mailing-link:hover {
+  background: var(--admin-accent) !important;
+  color: white !important;
+}
+
+#user-tools .admin-sep {
+  color: var(--admin-border) !important;
+  margin: 0 6px !important;
+}
+
+#user-tools form button {
+  background: transparent !important;
+  border: none !important;
+  color: var(--admin-text-muted) !important;
+  cursor: pointer !important;
+  font: inherit !important;
+  padding: 0 !important;
+}
+
+#user-tools form button:hover {
+  color: var(--admin-error) !important;
+}
+
+/* Breadcrumbs — без жёлтого */
+.breadcrumbs {
+  background: var(--breadcrumbs-bg, transparent) !important;
+  color: var(--breadcrumbs-fg, var(--admin-text-muted)) !important;
+  padding: 12px 24px !important;
+  font-size: 0.875rem !important;
+  border: none !important;
+  margin: 0 !important;
+}
+
+.breadcrumbs a {
+  color: var(--breadcrumbs-link-fg, var(--admin-text-muted)) !important;
+  text-decoration: none !important;
+}
+
+.breadcrumbs a:hover {
+  color: var(--admin-accent) !important;
+}
+
+/* Main content */
+#content {
+  padding: 24px !important;
+  margin: 0 !important;
+}
+
+#content-main {
+  float: none !important;
+  width: 100% !important;
+}
+
+/* Формы добавления/редактирования на всю ширину */
+.change-form #content,
+.change-form #content-main {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+.change-form #content-main form,
+.change-form #content-main .module {
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+/* Если справа пустой блок — не резервировать место */
+.colMS:has(#content-related:empty) {
+  margin-right: 0 !important;
+}
+
+#content-related:empty {
+  display: none !important;
+}
+
+/* Modules / Cards */
+.module {
+  background: var(--admin-card) !important;
+  border: 1px solid var(--admin-border) !important;
+  border-radius: var(--admin-radius) !important;
+  box-shadow: var(--admin-shadow) !important;
+  margin-bottom: 24px !important;
+  overflow: hidden !important;
+}
+
+.module h2 {
+  background: var(--admin-card) !important;
+  border-bottom: 1px solid var(--admin-border) !important;
+  padding: 16px 20px !important;
+  margin: 0 !important;
+  font-size: 1rem !important;
+  font-weight: 600 !important;
+  color: var(--admin-text) !important;
+}
+
+.module table {
+  margin: 0 !important;
+  border: none !important;
+}
+
+.module caption {
+  padding: 16px 20px !important;
+  font-weight: 600 !important;
+  font-size: 1rem !important;
+  text-align: left !important;
+  background: transparent !important;
+  color: var(--admin-text) !important;
+  border: none !important;
+}
+
+.module th,
+.module td {
+  padding: 12px 20px !important;
+  border-bottom: 1px solid var(--admin-border) !important;
+  vertical-align: middle !important;
+}
+
+.module tr:last-child th,
+.module tr:last-child td {
+  border-bottom: none !important;
+}
+
+.module th {
+  font-weight: 600 !important;
+  font-size: 0.8125rem !important;
+  color: var(--admin-text-muted) !important;
+  text-transform: none !important;
+}
+
+/* Dashboard index */
+#content-main .module {
+  display: inline-block;
+  vertical-align: top;
+  margin-right: 20px;
+  margin-bottom: 20px;
+  min-width: 280px;
+}
+
+/* Forms */
+.form-row {
+  padding: 12px 20px !important;
+  border-bottom: 1px solid var(--admin-border) !important;
+}
+
+.form-row:last-child {
+  border-bottom: none !important;
+}
+
+.form-row label {
+  font-weight: 500 !important;
+  font-size: 0.875rem !important;
+  color: var(--admin-text) !important;
+}
+
+input[type="text"],
+input[type="password"],
+input[type="email"],
+input[type="number"],
+input[type="url"],
+textarea {
+  border: 1px solid var(--admin-border) !important;
+  border-radius: var(--admin-radius-sm) !important;
+  padding: 8px 12px !important;
+  font-size: 0.875rem !important;
+  font-family: inherit !important;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+/* Select — высота и отступы, чтобы текст влезал по вертикали */
+select {
+  border: 1px solid var(--admin-border) !important;
+  border-radius: var(--admin-radius-sm) !important;
+  padding: 10px 32px 10px 12px !important;
+  min-height: 42px !important;
+  font-size: 0.875rem !important;
+  font-family: inherit !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none !important;
+  border-color: var(--admin-accent) !important;
+  box-shadow: 0 0 0 3px var(--admin-accent-soft) !important;
+}
+
+/* Buttons */
+input[type="submit"],
+button[type="submit"],
+.button,
+.submit-row input {
+  background: var(--admin-accent) !important;
+  color: white !important;
+  border: none !important;
+  padding: 10px 20px !important;
+  border-radius: var(--admin-radius-sm) !important;
+  font-weight: 600 !important;
+  font-size: 0.875rem !important;
+  cursor: pointer !important;
+  font-family: inherit !important;
+  transition: background 0.15s !important;
+}
+
+input[type="submit"]:hover,
+button[type="submit"]:hover,
+.button:hover {
+  background: var(--admin-accent-hover) !important;
+}
+
+.submit-row {
+  background: var(--admin-card) !important;
+  border: 1px solid var(--admin-border) !important;
+  border-radius: var(--admin-radius) !important;
+  padding: 16px 20px !important;
+  margin: 24px 0 !important;
+  box-shadow: var(--admin-shadow) !important;
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  gap: 12px !important;
+}
+
+.submit-row input,
+.submit-row a.deletelink,
+.submit-row a.closelink {
+  min-height: 42px !important;
+  padding: 10px 20px !important;
+  line-height: 1.25 !important;
+  font-size: 0.875rem !important;
+  font-weight: 600 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  white-space: nowrap !important;
+  box-sizing: border-box !important;
+}
+
+.submit-row a.deletelink {
+  margin-left: auto !important;
+  background: var(--delete-button-bg, #dc3545) !important;
+  color: #fff !important;
+  border-radius: var(--admin-radius-sm) !important;
+  text-decoration: none !important;
+}
+
+.submit-row a.deletelink:hover,
+.submit-row a.deletelink:focus {
+  background: var(--delete-button-hover-bg, #c82333) !important;
+  color: #fff !important;
+  text-decoration: none !important;
+}
+
+/* Links in content */
+#content a:not(.button):not(.admin-run-mailing-link) {
+  color: var(--admin-accent) !important;
+  text-decoration: none !important;
+}
+
+#content a:hover {
+  text-decoration: underline !important;
+}
+
+/* Messages */
+.messagelist li {
+  padding: 12px 20px !important;
+  border-radius: var(--admin-radius-sm) !important;
+  margin-bottom: 12px !important;
+  font-size: 0.875rem !important;
+}
+
+.messagelist li.success {
+  background: rgba(16, 185, 129, 0.12) !important;
+  color: #047857 !important;
+  border: 1px solid rgba(16, 185, 129, 0.3) !important;
+}
+
+.messagelist li.warning {
+  background: rgba(100, 116, 139, 0.15) !important;
+  color: #475569 !important;
+  border: 1px solid rgba(100, 116, 139, 0.35) !important;
+}
+
+.messagelist li.error {
+  background: rgba(239, 68, 68, 0.12) !important;
+  color: #b91c1c !important;
+  border: 1px solid rgba(239, 68, 68, 0.3) !important;
+}
+
+/* Pagination */
+.pagination a,
+.pagination span {
+  padding: 8px 14px !important;
+  margin: 0 2px !important;
+  border-radius: var(--admin-radius-sm) !important;
+  font-size: 0.875rem !important;
+}
+
+.pagination a:hover {
+  background: var(--admin-accent-soft) !important;
+  color: var(--admin-accent) !important;
+}
+
+/* Filter sidebar */
+#changelist-filter {
+  background: var(--admin-card) !important;
+  border: 1px solid var(--admin-border) !important;
+  border-radius: var(--admin-radius) !important;
+  box-shadow: var(--admin-shadow) !important;
+  padding: 16px !important;
+}
+
+#changelist-filter h2 {
+  font-size: 0.875rem !important;
+  font-weight: 600 !important;
+  padding: 0 0 12px !important;
+  margin: 0 0 12px !important;
+  border-bottom: 1px solid var(--admin-border) !important;
+}
+
+#changelist-filter h3 {
+  font-size: 0.75rem !important;
+  font-weight: 600 !important;
+  color: var(--admin-text-muted) !important;
+  margin: 16px 0 8px !important;
+  padding: 0 !important;
+}
+
+#changelist-filter li {
+  padding: 4px 0 !important;
+}
+
+#changelist-filter a {
+  color: var(--admin-text-muted) !important;
+  font-size: 0.875rem !important;
+}
+
+#changelist-filter a:hover,
+#changelist-filter li.selected a {
+  color: var(--admin-accent) !important;
+}
+
+/* Changelist table — на всю ширину контента */
+#changelist {
+  background: var(--admin-card) !important;
+  border: 1px solid var(--admin-border) !important;
+  border-radius: var(--admin-radius) !important;
+  box-shadow: var(--admin-shadow) !important;
+  overflow: hidden !important;
+  width: 100% !important;
+}
+
+#changelist .changelist-form-container {
+  flex: 1 1 0 !important;
+  min-width: 0 !important;
+  width: 100% !important;
+}
+
+#changelist-form .results,
+#changelist .results {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+#changelist .results table,
+#changelist table {
+  width: 100% !important;
+  max-width: 100% !important;
+  table-layout: auto !important;
+}
+
+/* Со списком фильтров таблица тоже на всю ширину */
+.change-list.filtered #changelist-form .results,
+.change-list.filtered #changelist .results {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+#changelist .results table {
+  border: none !important;
+}
+
+#changelist .results th,
+#changelist .results td {
+  padding: 12px 20px !important;
+  border-bottom: 1px solid var(--admin-border) !important;
+}
+
+#changelist .results thead th {
+  background: var(--admin-bg) !important;
+  font-weight: 600 !important;
+  font-size: 0.75rem !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.03em !important;
+  color: var(--admin-text-muted) !important;
+}
+
+#changelist .results tbody tr:hover {
+  background: var(--admin-bg) !important;
+}
+
+/* Actions */
+#changelist .actions {
+  padding: 12px 20px !important;
+  background: var(--admin-bg) !important;
+  border-bottom: 1px solid var(--admin-border) !important;
+}
+
+#changelist .actions label {
+  font-size: 0.875rem !important;
+}
+
+#changelist .actions select {
+  width: auto !important;
+  min-width: 180px !important;
+  margin: 0 8px !important;
+}
+
+/* Login page */
+.login {
+  background: var(--admin-bg) !important;
+  padding: 40px 20px !important;
+}
+
+.login #content {
+  padding: 40px !important;
+  background: var(--admin-card) !important;
+  border-radius: var(--admin-radius) !important;
+  box-shadow: var(--admin-shadow-md) !important;
+  border: 1px solid var(--admin-border) !important;
+  max-width: 400px !important;
+  margin: 0 auto !important;
+}
+
+.login h1 {
+  text-align: center !important;
+  margin-bottom: 24px !important;
+}
+
+.login .form-row {
+  padding: 16px 0 !important;
+  border: none !important;
+}
+
+.login input[type="submit"] {
+  width: 100% !important;
+  padding: 12px !important;
+  margin-top: 8px !important;
+}
+
+/* Run mailing page — на всю ширину */
+#content:has(#run-mailing-form) {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+#run-mailing-form .module {
+  max-width: none !important;
+  width: 100% !important;
+}
+
+#run-mailing-form .module ul {
+  margin: 0 !important;
+  padding: 12px 20px !important;
+}
+
+#run-mailing-form .module li {
+  padding: 8px 0 !important;
+  list-style: none !important;
+}
+
+#run-mailing-form .module li label {
+  cursor: pointer !important;
+  font-size: 0.875rem !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+#run-mailing-form .module input[type="checkbox"] {
+  width: auto !important;
+  accent-color: var(--admin-accent) !important;
+}
+
+#run-mailing-form .form-row label {
+  display: block !important;
+  margin-bottom: 6px !important;
+}
+
+#run-mailing-form select#id_template {
+  max-width: 400px !important;
+}
+
+#run-mailing-form .run-mailing-search-row {
+  display: flex !important;
+  gap: 12px !important;
+  align-items: center !important;
+  flex-wrap: wrap !important;
+}
+
+#run-mailing-form .run-mailing-search {
+  flex: 1 1 280px !important;
+  max-width: 400px !important;
+}
+
+#run-mailing-form .run-mailing-search-btn,
+#run-mailing-form .run-mailing-load-more {
+  padding: 8px 16px !important;
+  font-weight: 600 !important;
+  border-radius: var(--admin-radius-sm) !important;
+  cursor: pointer !important;
+  border: 1px solid var(--admin-border) !important;
+  background: var(--admin-bg) !important;
+  color: var(--admin-text) !important;
+}
+
+#run-mailing-form .run-mailing-search-btn:hover,
+#run-mailing-form .run-mailing-load-more:hover {
+  background: var(--admin-accent-soft) !important;
+  border-color: var(--admin-accent) !important;
+  color: var(--admin-accent) !important;
+}
+
+#run-mailing-form .run-mailing-list {
+  max-height: 320px !important;
+  overflow-y: auto !important;
+}
+
+#run-mailing-form .run-mailing-hint {
+  margin-top: 1em !important;
+  color: var(--admin-text-muted) !important;
+  font-size: 0.875rem !important;
+}
+
+/* Сайдбар — без жёлтого, читаемый текст */
+#nav-sidebar .module caption,
+#nav-sidebar .module th {
+  color: var(--body-quiet-color, var(--admin-text-muted)) !important;
+}
+
+#nav-sidebar .current-app .section:link,
+#nav-sidebar .current-app .section:visited {
+  color: var(--header-color, var(--admin-text)) !important;
+}
+
+#nav-sidebar .current-model {
+  background: var(--selected-row) !important;
+}
+
+#nav-sidebar .current-model a {
+  color: var(--body-fg, var(--admin-text)) !important;
+}
+
+/* Footer */
+#footer {
+  padding: 16px 24px !important;
+  font-size: 0.8125rem !important;
+  color: var(--admin-text-muted) !important;
+  border-top: 1px solid var(--admin-border) !important;
+  background: var(--admin-card) !important;
+  margin: 0 !important;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  #content-main .module {
+    min-width: 100%;
+    margin-right: 0;
+  }
+}
+
+/* Селекты в формах — высота, чтобы текст не обрезался по вертикали */
+#content select:not([multiple]) {
+  min-height: 42px !important;
+  padding-top: 10px !important;
+  padding-bottom: 10px !important;
+}

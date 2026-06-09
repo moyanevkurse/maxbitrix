@@ -1,0 +1,22 @@
+{% extends "admin/base.html" %}
+{% load i18n static %}
+
+{% block title %}{% if title %}{{ title }} | {% endif %}Рассылки{% endblock %}
+
+{% block extrastyle %}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'css/admin_theme.css' %}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+{% endblock %}
+
+{% block branding %}
+<h1 id="site-name"><a href="{% url 'admin:index' %}">Рассылки</a></h1>
+{% endblock %}
+
+{% block userlinks %}
+    <a href="{% url 'admin:mailings_template_run_mailing' %}" class="admin-run-mailing-link">Запуск рассылки</a>
+    <span class="admin-sep">/</span>
+    {{ block.super }}
+{% endblock %}

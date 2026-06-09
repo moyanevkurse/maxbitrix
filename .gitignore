@@ -1,0 +1,12 @@
+.env
+*.pyc
+__pycache__/
+db.sqlite3
+media/
+staticfiles/
+venv/
+*.log
+.Python
+profile/.max-manual-profile/
+profile/max_ws_token.env
+/.max-playwright-profile/
