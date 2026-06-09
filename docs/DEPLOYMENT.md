@@ -43,14 +43,11 @@
 - Python 3.10+
 - Redis (для Celery)
 - SQLite или PostgreSQL
-- Публичный **HTTPS**-домен — Bitrix и MAX должны достучаться до сервера
+- Публичный HTTPS-домен — Bitrix и MAX должны достучаться до сервера
 - Nginx (или другой reverse proxy) + TLS-сертификат (Let's Encrypt)
 - Аккаунт Bitrix24 с CRM и Открытыми линиями
-- Бот MAX (токен `MAX_BOT_TOKEN`)
-
-Для создания MAX-групп через WebSocket (обязательно, если используешь create-group):
-
-- **Playwright** + Chromium на сервере
+- Бот MAX (токен `MAX_BOT_TO
+- Playwright + Chromium на сервере
 - Постоянный профиль браузера (`MAX_GROUP_PROFILE_DIR`)
 - Фоновый демон обновления WS-токена (`scripts/max_ws_token_daemon.py`)
 
