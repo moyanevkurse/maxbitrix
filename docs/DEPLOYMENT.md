@@ -22,7 +22,7 @@
 14. [Админка Django](#14-админка-django)
 15. [Команды manage.py и scripts](#15-команды-managepy-и-scripts)
 16. [Смена домена / новый портал Bitrix](#16-смена-домена--новый-портал-bitrix)
-17. [Типичные проблемы](#17-типичные-проблемы)
+
 
 ---
 
@@ -722,7 +722,7 @@ POST https://BASE/bitrix/max/create-group/?secret=MAX_GROUP_WEBHOOK_SECRET
 
 Фильтры: город, тип компании, потенциал, тип чата (личные / группы).
 
-Перед рассылкой: **Синхронизировать из Bitrix** (слепки контактов/компаний).
+Перед рассылкой: **Синхронизировать из Bitrix** (слепки контактов/компаний) — кнопка в админке или команды из [раздела 15](#синхронизация-контактов-и-компаний-snapshot).
 
 ### 13.2 Как система находит MAX-чаты
 
@@ -768,6 +768,36 @@ python manage.py collectstatic --noinput
 python manage.py register_openline_connector --placement-url "https://BASE/bitrix/handler/"
 python manage.py bind_openlines_events --handler-url "https://BASE/bitrix/handler/"
 ```
+
+### Синхронизация контактов и компаний (snapshot)
+
+Тянет контакты и компании из Bitrix REST (`BITRIX_WEBHOOK_URL`) в локальные слепки Django (`BitrixContactSnapshot`, `BitrixCompanySnapshot`). Нужно перед рассылками и после смены UF-полей на портале.
+
+**Через админку** (фоном, нужен запущенный Celery):
+
+- **Mailings → Слепки контактов Bitrix** → «Синхронизировать из Bitrix»
+- **Mailings → Слепки компаний Bitrix** → «Синхронизировать из Bitrix»
+
+**Через manage.py** (синхронно, в терминале на сервере):
+
+```bash
+# Полная синхронизация
+python manage.py sync_bitrix_snapshots
+
+# Инкрементальная — только изменённые с даты
+python manage.py sync_bitrix_snapshots --date-modify-from "2026-04-01T00:00:00+03:00"
+```
+
+**Через scripts** (то же самое, без `manage.py`):
+
+```bash
+python scripts/sync_bitrix_snapshots.py
+python scripts/sync_bitrix_snapshots.py --date-modify-from "2026-04-01T00:00:00+03:00"
+```
+
+После успеха в выводе: `contacts=X/Y, companies=A/B`.
+
+Автообновление по событиям CRM (если настроен исходящий webhook Bitrix на `{BASE}/api/bitrix/webhook/`) — дополняет ручной sync, но **не заменяет** первый полный прогон.
 
 ### MAX webhook
 
@@ -826,20 +856,7 @@ python scripts/open_max_profile.py --profile-dir profile/.max-manual-profile
 
 ---
 
-## 17. Типичные проблемы
 
-| Симптом | Причина | Решение |
-|---------|---------|---------|
-| `final_ids=[]`, только бот в группе | Нет IMOL у контакта, нет MAX id у ответственного, пустой справочник сотрудников | Заполнить IM/UF, админка «Сотрудники MAX-группы», `BITRIX_UF_USER_MAX_USER_ID` |
-| `session_id=None` в Open Lines | Неверный `LINE_ID` или коннектор не подключён к линии | `LINE_ID=2`, UI Контакт-центр → Каналы |
-| `Handler already binded` | Подписка уже есть | Ничего не делать |
-| `Method not found` для `crm.user.get` | Неверный метод | Использовать `user.get` |
-| Группа с «дизайнер» вместо «партнер» | Робот передаёт готовый `title` | Убрать `title` из робота или поменять текст |
-| Рассылка не видит компанию | Нет `max_chat_id` в UF / snapshot | `bot_added` sync, sync snapshot, проверить `BITRIX_UF_COMPANY_MAX_CHAT_ID` |
-| `202` на create-group, но группы нет | Celery не запущен | Запустить `celery -A config worker` |
-| Auth-ошибка при создании группы | Протух `MAX_WS_TOKEN` / демон браузера не работает | Запустить `max_ws_token_daemon`, перелогиниться через `max_ws_token_keeper` |
-| Playwright `browser closed` на сервере | Нет `playwright install-deps` или нет демона | `playwright install chromium && playwright install-deps`, systemd для демона |
-| Конфликт миграций openlines | Две ветки 0005 | `python manage.py migrate` после merge-миграций в репозитории |
 
 ---
 
@@ -858,6 +875,4 @@ python scripts/open_max_profile.py --profile-dir profile/.max-manual-profile
 # 10. Робот: POST create-group → бот в группу MAX → связка в CRM
 ```
 
----
 
-*Документ актуален для репозитория Telegram-bot-for-mailings. При изменении кода сверяй с `.env.example` и `config/settings.py`.*

@@ -52,6 +52,15 @@ COMPANY_SEGMENT_LABELS = {
     "1171": "Поставщик",
 }
 
+# Тип контакта (UF_CRM_1741120826) → пишем в job_title.
+CONTACT_JOB_TITLE_UF = "UF_CRM_1741120826"
+CONTACT_JOB_TITLE_LABELS = {
+    "": "",
+    "45": "Розничный клиент",
+    "47": "Дизайнер",
+    "49": "Партнер",
+}
+
 
 @dataclass
 class SyncStats:
@@ -127,6 +136,29 @@ def resolve_potential_label(value_id: Any) -> str:
 
 def resolve_segment_label(value_id: Any) -> str:
     return COMPANY_SEGMENT_LABELS.get(str(value_id or "").strip(), "")
+
+
+def resolve_contact_job_title_label(value_id: Any) -> str:
+    return CONTACT_JOB_TITLE_LABELS.get(str(value_id or "").strip(), "")
+
+
+def _first_enum_id(value: Any) -> str:
+    """Первый ID из UF-списка/скаляра Bitrix (поле обычно одно значение)."""
+    if isinstance(value, list):
+        if not value:
+            return ""
+        first = value[0]
+        if isinstance(first, dict):
+            return str(first.get("VALUE") or first.get("ID") or "").strip()
+        return str(first or "").strip()
+    if isinstance(value, dict):
+        return str(value.get("VALUE") or value.get("ID") or "").strip()
+    return str(value or "").strip()
+
+
+def resolve_contact_job_title(item: dict[str, Any]) -> str:
+    value_id = _first_enum_id(item.get(CONTACT_JOB_TITLE_UF))
+    return resolve_contact_job_title_label(value_id)
 
 
 def _list_all(method: str, *, select: list[str] | None = None, filter_data: dict[str, Any] | None = None) -> list[dict[str, Any]]:
@@ -205,7 +237,7 @@ def sync_contacts(*, date_modify_from: str | None = None) -> tuple[int, int]:
                 "assigned_by_id": str(item.get("ASSIGNED_BY_ID") or ""),
                 "phone": _normalize_phone(item.get("PHONE")),
                 "email": _normalize_email(item.get("EMAIL")),
-                "job_title": str(item.get("POST") or "").strip(),
+                "job_title": resolve_contact_job_title(item),
                 "address": pick_contact_address(item, use_requisites=_use_requisite_addresses()),
                 "messenger_chat_number": str(item.get(_contact_messenger_chat_uf()) or ""),
                 "last_sale_at": _parse_dt(item.get("UF_CRM_CONTLASTSALE")),
@@ -312,7 +344,7 @@ def sync_contact_by_id(contact_id: int | str) -> bool:
             "assigned_by_id": str(item.get("ASSIGNED_BY_ID") or ""),
             "phone": _normalize_phone(item.get("PHONE")),
             "email": _normalize_email(item.get("EMAIL")),
-            "job_title": str(item.get("POST") or "").strip(),
+            "job_title": resolve_contact_job_title(item),
             "address": pick_contact_address(item, use_requisites=_use_requisite_addresses()),
             "messenger_chat_number": str(item.get(_contact_messenger_chat_uf()) or ""),
             "last_sale_at": _parse_dt(item.get("UF_CRM_CONTLASTSALE")),

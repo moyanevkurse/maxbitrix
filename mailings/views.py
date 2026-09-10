@@ -415,6 +415,7 @@ def _collect_recipients_from_filters_data(
     company_types: list[str],
     potentials: list[str],
     chat_kinds: list[str],
+    contact_job_titles: list[str] | None = None,
 ) -> dict:
     from mailings.models import BitrixCompanySnapshot, BitrixContactSnapshot, Partner
 
@@ -422,6 +423,7 @@ def _collect_recipients_from_filters_data(
     recipient_chat_ids: set[str] = set()
     included: list[dict] = []
     excluded: list[dict] = []
+    contact_job_titles = [str(v).strip() for v in (contact_job_titles or []) if str(v).strip()]
 
     if group_ids:
         partner_pks.update(
@@ -431,7 +433,7 @@ def _collect_recipients_from_filters_data(
     # Chat kind checkboxes тоже должны уметь сами запускать подбор из snapshot.
     # Иначе сценарий "покажи все личные" / "покажи все группы" возвращает пусто.
     city_needle = str(city_filter or '').strip()
-    if city_needle or sleep_status or company_types or potentials or chat_kinds:
+    if city_needle or sleep_status or company_types or potentials or chat_kinds or contact_job_titles:
         now = timezone.now()
         threshold = now - timedelta(days=30)
 
@@ -455,6 +457,9 @@ def _collect_recipients_from_filters_data(
         if potentials:
             company_qs = company_qs.filter(potential_value_id__in=potentials)
 
+        if contact_job_titles:
+            contact_qs = contact_qs.filter(job_title__in=contact_job_titles)
+
         all_contacts = list(
             BitrixContactSnapshot.objects.all().only(
                 'bitrix_contact_id',
@@ -474,7 +479,8 @@ def _collect_recipients_from_filters_data(
         # Контакты как самостоятельный источник включаем только когда нет
         # фильтров компании. Иначе выборка должна сужаться по компаниям (AND),
         # без "подмешивания" всех контактов по городу/статусу.
-        include_direct_contacts = not bool(company_types or potentials)
+        # Фильтр типа контакта всегда включает прямые контакты.
+        include_direct_contacts = (not bool(company_types or potentials)) or bool(contact_job_titles)
         if include_direct_contacts:
             for contact in contact_qs.only('bitrix_contact_id', 'full_name', 'max_chat_id', 'raw_data'):
                 targets, reason = _extract_contact_max_targets(contact)
@@ -500,37 +506,42 @@ def _collect_recipients_from_filters_data(
                         }
                     )
 
-        for company in company_qs.only('bitrix_company_id', 'title', 'max_chat_id', 'raw_data'):
-            company_targets = _extract_company_direct_max_targets(company)
-            linked_contacts = contacts_by_company_id.get(str(company.bitrix_company_id), [])
-            linked_targets: dict[str, str] = {}
-            for contact in linked_contacts:
-                targets, _ = _extract_contact_max_targets(contact)
-                for target, source in targets.items():
-                    linked_targets.setdefault(target, f'{source}; связанный контакт {_contact_display_name(contact)}')
+        # Если выбран только тип контакта — компании не подмешиваем.
+        include_companies = not (
+            bool(contact_job_titles) and not bool(company_types or potentials or city_needle or sleep_status)
+        )
+        if include_companies:
+            for company in company_qs.only('bitrix_company_id', 'title', 'max_chat_id', 'raw_data'):
+                company_targets = _extract_company_direct_max_targets(company)
+                linked_contacts = contacts_by_company_id.get(str(company.bitrix_company_id), [])
+                linked_targets: dict[str, str] = {}
+                for contact in linked_contacts:
+                    targets, _ = _extract_contact_max_targets(contact)
+                    for target, source in targets.items():
+                        linked_targets.setdefault(target, f'{source}; связанный контакт {_contact_display_name(contact)}')
 
-            if company_targets or linked_targets:
-                merged_targets = {**company_targets, **linked_targets}
-                for target, source in merged_targets.items():
-                    recipient_chat_ids.add(target)
-                    included.append(
+                if company_targets or linked_targets:
+                    merged_targets = {**company_targets, **linked_targets}
+                    for target, source in merged_targets.items():
+                        recipient_chat_ids.add(target)
+                        included.append(
+                            {
+                                'kind': 'company',
+                                'entity_id': str(company.bitrix_company_id),
+                                'name': _company_display_name(company),
+                                'target': target,
+                                'source': source,
+                            }
+                        )
+                else:
+                    excluded.append(
                         {
                             'kind': 'company',
                             'entity_id': str(company.bitrix_company_id),
                             'name': _company_display_name(company),
-                            'target': target,
-                            'source': source,
+                            'reason': 'Нет MAX target в компании и у связанных контактов',
                         }
                     )
-            else:
-                excluded.append(
-                    {
-                        'kind': 'company',
-                        'entity_id': str(company.bitrix_company_id),
-                        'name': _company_display_name(company),
-                        'reason': 'Нет MAX target в компании и у связанных контактов',
-                    }
-                )
 
     if chat_kinds:
         allowed_types = set()
@@ -600,6 +611,7 @@ def _collect_recipients_from_filters(
     company_types: list[str],
     potentials: list[str],
     chat_kinds: list[str],
+    contact_job_titles: list[str] | None = None,
 ) -> tuple[set[int], set[str]]:
     data = _collect_recipients_from_filters_data(
         group_ids=group_ids,
@@ -609,6 +621,7 @@ def _collect_recipients_from_filters(
         company_types=company_types,
         potentials=potentials,
         chat_kinds=chat_kinds,
+        contact_job_titles=contact_job_titles,
     )
     return data['partner_pks'], data['recipient_chat_ids']
 
@@ -722,6 +735,7 @@ def bitrix_run_mailing_webhook(request):
         company_types = _extract_multi_values(data, 'company_types')
         potentials = _extract_multi_values(data, 'potentials')
         chat_kinds = _extract_multi_values(data, 'chat_kinds')
+        contact_job_titles = _extract_multi_values(data, 'contact_job_titles')
         source = str(data.get('source') or 'bitrix_robot').strip()
         request_id = str(data.get('request_id') or '').strip()
 
@@ -733,6 +747,7 @@ def bitrix_run_mailing_webhook(request):
             company_types=company_types,
             potentials=potentials,
             chat_kinds=chat_kinds,
+            contact_job_titles=contact_job_titles,
         )
 
         if recipient_chat_ids:

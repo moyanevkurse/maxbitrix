@@ -310,7 +310,8 @@ class TemplateAdmin(admin.ModelAdmin):
     def run_mailing_view(self, request):
         def _render_page(*, preview=None, selected_template_id='', selected_group_ids=None, selected_partner_ids=None,
                          selected_chat_kinds=None, city_filter='', sleep_status='',
-                         selected_company_types=None, selected_potentials=None):
+                         selected_company_types=None, selected_potentials=None,
+                         selected_contact_job_titles=None):
             templates = Template.objects.all().order_by('name')
             context = {
                 **self.admin_site.each_context(request),
@@ -325,6 +326,7 @@ class TemplateAdmin(admin.ModelAdmin):
                 'selected_sleep_status': str(sleep_status or ''),
                 'selected_company_types': selected_company_types or [],
                 'selected_potentials': selected_potentials or [],
+                'selected_contact_job_titles': selected_contact_job_titles or [],
             }
             return render(request, 'admin/mailings/run_mailing.html', context)
 
@@ -340,6 +342,7 @@ class TemplateAdmin(admin.ModelAdmin):
             sleep_status = (request.POST.get('sleep_status') or '').strip()
             company_types = [v.strip() for v in request.POST.getlist('company_types') if str(v).strip()]
             potentials = [v.strip() for v in request.POST.getlist('potentials') if str(v).strip()]
+            contact_job_titles = [v.strip() for v in request.POST.getlist('contact_job_titles') if str(v).strip()]
             if action == 'queue' and not template_id:
                 messages.error(request, 'Выберите шаблон.')
                 return _render_page(
@@ -351,6 +354,7 @@ class TemplateAdmin(admin.ModelAdmin):
                     sleep_status=sleep_status,
                     selected_company_types=company_types,
                     selected_potentials=potentials,
+                    selected_contact_job_titles=contact_job_titles,
                 )
 
             recipients_data = _collect_recipients_from_filters_data(
@@ -361,6 +365,7 @@ class TemplateAdmin(admin.ModelAdmin):
                 company_types=company_types,
                 potentials=potentials,
                 chat_kinds=chat_kinds,
+                contact_job_titles=contact_job_titles,
             )
             partner_pks = recipients_data['partner_pks']
             recipient_chat_ids = recipients_data['recipient_chat_ids']
@@ -395,6 +400,7 @@ class TemplateAdmin(admin.ModelAdmin):
                     sleep_status=sleep_status,
                     selected_company_types=company_types,
                     selected_potentials=potentials,
+                    selected_contact_job_titles=contact_job_titles,
                 )
 
             if action == 'preview':

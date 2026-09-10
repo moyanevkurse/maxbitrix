@@ -57,6 +57,12 @@
       <label><input type="checkbox" name="company_types" value="1171" {% if '1171' in selected_company_types %}checked{% endif %}> Поставщик (ID 1171)</label>
     </div>
     <div class="form-row">
+      <label>Тип контакта:</label>
+      <label><input type="checkbox" name="contact_job_titles" value="Розничный клиент" {% if 'Розничный клиент' in selected_contact_job_titles %}checked{% endif %}> Розничный клиент</label>
+      <label><input type="checkbox" name="contact_job_titles" value="Дизайнер" {% if 'Дизайнер' in selected_contact_job_titles %}checked{% endif %}> Дизайнер</label>
+      <label><input type="checkbox" name="contact_job_titles" value="Партнер" {% if 'Партнер' in selected_contact_job_titles %}checked{% endif %}> Партнер</label>
+    </div>
+    <div class="form-row">
       <label>Потенциал МойСклад:</label>
       <label><input type="checkbox" name="potentials" value="579" {% if '579' in selected_potentials %}checked{% endif %}> A (ID 579)</label>
       <label><input type="checkbox" name="potentials" value="581" {% if '581' in selected_potentials %}checked{% endif %}> B (ID 581)</label>

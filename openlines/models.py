@@ -127,6 +127,30 @@ class MaxGroupWelcomeConfig(models.Model):
         return preview or '—'
 
 
+class MaxGroupWelcomeAttachment(models.Model):
+    """Вложения приветствия MAX-групп (любое количество файлов)."""
+
+    config = models.ForeignKey(
+        MaxGroupWelcomeConfig,
+        on_delete=models.CASCADE,
+        related_name='attachments',
+        verbose_name='Приветствие',
+    )
+    file = models.FileField(
+        'Файл',
+        upload_to='openlines/welcome/%Y/%m/',
+    )
+    created_at = models.DateTimeField('Создан', auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Вложение приветствия'
+        verbose_name_plural = 'Вложения приветствия'
+        ordering = ['created_at', 'id']
+
+    def __str__(self) -> str:
+        return self.file.name or f'Attachment #{self.pk}'
+
+
 class MaxGroupStaffMember(models.Model):
     """
     Сотрудники для добавления в MAX-группу при создании из контакта или компании.

@@ -246,7 +246,7 @@ BITRIX_UF_EMPLOYEE_MAX_USER_ID = env('BITRIX_UF_EMPLOYEE_MAX_USER_ID', default='
 # UF на user.get (если MAX id хранится на пользователе, а не на контакте-сотруднике).
 BITRIX_UF_USER_MAX_USER_ID = env('BITRIX_UF_USER_MAX_USER_ID', default='UF_USR_1779878090247')
 # Публичный https URL аватарки, который будет ставиться новой MAX-группе после создания.
-MAX_GROUP_AVATAR_URL = env('MAX_GROUP_AVATAR_URL', default='https://c835-1-55-41-18.ngrok-free.app/media/87613eef-9397-46a8-bc3a-dba838369f43.jpg')
+MAX_GROUP_AVATAR_URL = env('MAX_GROUP_AVATAR_URL')
 # Отправлять ли системное уведомление при смене аватарки группы.
 MAX_GROUP_AVATAR_NOTIFY = env.bool('MAX_GROUP_AVATAR_NOTIFY', default=False)
 # Связка MAX-группы с контактом Bitrix при bot_added / chat_title_changed

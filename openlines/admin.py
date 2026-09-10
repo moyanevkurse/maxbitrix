@@ -1,7 +1,13 @@
 from django import forms
 from django.contrib import admin
 
-from .models import BitrixPortal, ExternalChat, MaxGroupStaffMember, MaxGroupWelcomeConfig
+from .models import (
+    BitrixPortal,
+    ExternalChat,
+    MaxGroupStaffMember,
+    MaxGroupWelcomeAttachment,
+    MaxGroupWelcomeConfig,
+)
 
 
 @admin.register(BitrixPortal)
@@ -34,12 +40,20 @@ class ExternalChatAdmin(admin.ModelAdmin):
     readonly_fields = ('created_at', 'updated_at')
 
 
+class MaxGroupWelcomeAttachmentInline(admin.TabularInline):
+    model = MaxGroupWelcomeAttachment
+    extra = 1
+    fields = ('file', 'created_at')
+    readonly_fields = ('created_at',)
+
+
 @admin.register(MaxGroupWelcomeConfig)
 class MaxGroupWelcomeConfigAdmin(admin.ModelAdmin):
-    list_display = ('is_active', 'updated_at', 'created_at', 'welcome_preview')
+    list_display = ('is_active', 'attachments_count', 'updated_at', 'created_at', 'welcome_preview')
     list_filter = ('is_active',)
     readonly_fields = ('created_at', 'updated_at')
     search_fields = ('welcome_text',)
+    inlines = (MaxGroupWelcomeAttachmentInline,)
 
     formfield_overrides = {
         'welcome_text': {
@@ -52,6 +66,11 @@ class MaxGroupWelcomeConfigAdmin(admin.ModelAdmin):
         return raw[:80] + ('…' if len(raw) > 80 else '')
 
     welcome_preview.short_description = 'Превью'
+
+    def attachments_count(self, obj: MaxGroupWelcomeConfig) -> int:
+        return obj.attachments.count()
+
+    attachments_count.short_description = 'Файлов'
 
     def has_add_permission(self, request) -> bool:
         # Singleton: один конфиг в админке.
@@ -97,4 +116,3 @@ class MaxGroupStaffMemberAdmin(admin.ModelAdmin):
         }),
     )
     readonly_fields = ('created_at', 'updated_at')
-

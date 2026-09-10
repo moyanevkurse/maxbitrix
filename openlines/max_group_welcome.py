@@ -51,11 +51,54 @@ def _media_send_type(path: Path) -> str:
 
 def resolve_welcome_media_files() -> list[tuple[Path, str]]:
     """
-    Возвращает [(абсолютный путь, send_type), ...] для файлов из MEDIA_ROOT.
+    Возвращает [(абсолютный путь, send_type), ...].
+
+    Приоритет:
+    1) вложения из MaxGroupWelcomeConfig в админке
+    2) fallback на settings.MAX_GROUP_WELCOME_MEDIA_FILES / дефолтные имена в MEDIA_ROOT
     """
     if not bool(getattr(settings, 'MAX_GROUP_WELCOME_MEDIA_ENABLED', True)):
         return []
 
+    db_files = _resolve_welcome_media_from_db()
+    if db_files:
+        return db_files
+    return _resolve_welcome_media_from_settings()
+
+
+def _resolve_welcome_media_from_db() -> list[tuple[Path, str]]:
+    try:
+        from .models import MaxGroupWelcomeConfig
+
+        cfg = (
+            MaxGroupWelcomeConfig.objects.filter(is_active=True)
+            .prefetch_related('attachments')
+            .order_by('-updated_at', '-id')
+            .first()
+        )
+        if not cfg:
+            return []
+
+        resolved: list[tuple[Path, str]] = []
+        for attachment in cfg.attachments.all():
+            if not attachment.file:
+                continue
+            try:
+                path = Path(attachment.file.path).resolve()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning('MAX welcome media: cannot resolve attachment id=%s: %s', attachment.pk, exc)
+                continue
+            if not path.is_file():
+                logger.warning('MAX welcome media: attachment file missing: %s', path)
+                continue
+            resolved.append((path, _media_send_type(path)))
+        return resolved
+    except Exception as exc:  # noqa: BLE001
+        logger.warning('MAX welcome media: DB attachments unavailable: %s', exc)
+        return []
+
+
+def _resolve_welcome_media_from_settings() -> list[tuple[Path, str]]:
     raw = str(getattr(settings, 'MAX_GROUP_WELCOME_MEDIA_FILES', '') or '').strip()
     if not raw:
         names = list(DEFAULT_WELCOME_MEDIA_FILES)

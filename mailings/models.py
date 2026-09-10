@@ -171,7 +171,7 @@ class BitrixContactSnapshot(models.Model):
     assigned_by_id = models.CharField('ID ответственного', max_length=64, blank=True, default='')
     phone = models.CharField('Телефон', max_length=255, blank=True, default='')
     email = models.CharField('Email', max_length=255, blank=True, default='')
-    job_title = models.CharField('Должность', max_length=255, blank=True, default='')
+    job_title = models.CharField('Тип контакта', max_length=255, blank=True, default='')
     address = models.CharField('Адрес', max_length=512, blank=True, default='')
     messenger_chat_number = models.CharField('Номер чата в мессенджере', max_length=255, blank=True, default='')
     last_sale_at = models.DateTimeField('Дата последней продажи (контакт)', null=True, blank=True)
