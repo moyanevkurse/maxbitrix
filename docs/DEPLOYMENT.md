@@ -505,15 +505,24 @@ playwright install-deps    # Ubuntu/Debian: libgtk, fonts и т.д.
 
 Нужен аккаунт MAX, с которого создаются группы. Скрипт открывает `web.max.ru`, ждёт QR-логин, сохраняет профиль и токен.
 
+Перед запуском keeper или ручным открытием профиля обязательно останови демон, если он уже запущен. Keeper и daemon используют один `profile/.max-manual-profile` и не должны открывать его одновременно:
+
+```bash
+# В текущей установке сервис называется max_token.
+# В другой установке имя может быть max-ws-token-daemon.
+sudo systemctl stop max_token
+sudo systemctl is-active max_token
+# Ожидаемый результат: inactive (failed после ошибки закрытия браузера тоже означает, что процесс остановлен)
+```
+
 **На сервере без монитора** — два варианта:
 
 **Вариант A:** первый раз залогиниться на локальной машине, скопировать папку `profile/.max-manual-profile` на сервер.
 
-**Вариант B:** на сервере с виртуальным дисплеем:
+**Вариант B:** войти на сервер через VNC/X11 и выполнить в терминале внутри графической сессии:
 
 ```bash
-sudo apt install xvfb
-xvfb-run -a python scripts/max_ws_token_keeper.py \
+python scripts/max_ws_token_keeper.py \
   --profile-dir profile/.max-manual-profile \
   --save-env --env-file profile/max_ws_token.env \
   --timeout 900
@@ -521,12 +530,21 @@ xvfb-run -a python scripts/max_ws_token_keeper.py \
 
 Отсканируй QR в MAX с телефона. После успеха в `profile/max_ws_token.env` появится `MAX_WS_TOKEN`.
 
-Команда (если есть дисплей / SSH с X11):
+Не добавляй `--headless` при входе по QR. `xvfb-run` без подключённого к нему VNC создаёт невидимый виртуальный экран, поэтому QR увидеть нельзя. Его можно использовать только для автоматической проверки уже авторизованного профиля:
 
 ```bash
-python scripts/max_ws_token_keeper.py \
+xvfb-run -a python scripts/max_ws_token_keeper.py \
   --profile-dir profile/.max-manual-profile \
-  --save-env --env-file profile/max_ws_token.env
+  --save-env --env-file profile/max_ws_token.env \
+  --timeout 900 --headless
+```
+
+После сообщения `Token received` keeper закрывает браузер. Только после его завершения запусти постоянный демон:
+
+```bash
+sudo systemctl start max_token
+sudo systemctl status max_token --no-pager
+sudo journalctl -u max_token -f --no-pager
 ```
 
 ### 10.3 Демон на сервере (основной режим production)
@@ -576,12 +594,13 @@ WantedBy=multi-user.target
 Без Playwright — обычный Chrome/Chromium с сохранённым профилем:
 
 ```bash
+sudo systemctl stop max_token
 python scripts/open_max_profile.py \
   --profile-dir profile/.max-manual-profile \
   --url https://web.max.ru
 ```
 
-Полезно, если нужно перелогиниться или проверить, что сессия жива.
+Полезно, если нужно перелогиниться или проверить, что сессия жива. Перед запуском постоянного демона закрой открытый вручную браузер, затем выполни `sudo systemctl start max_token`.
 
 ### 10.5 Как это связано с Celery
 
@@ -811,12 +830,15 @@ python scripts/generate_max_webhook_secret.py --register \
 ### Браузер MAX (см. раздел 10)
 
 ```bash
-# Первый вход (один раз)
+# Первый вход или повторный QR-логин:
+# keeper и daemon не должны одновременно использовать один профиль
+sudo systemctl stop max_token
 python scripts/max_ws_token_keeper.py \
   --profile-dir profile/.max-manual-profile \
   --save-env --env-file profile/max_ws_token.env
+sudo systemctl start max_token
 
-# Демон на сервере (постоянно)
+# Демон вручную (только если systemd-сервис max_token не используется)
 python scripts/max_ws_token_daemon.py \
   --profile-dir profile/.max-manual-profile \
   --env-file profile/max_ws_token.env \
