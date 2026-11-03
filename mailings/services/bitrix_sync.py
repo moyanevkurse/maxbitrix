@@ -33,6 +33,13 @@ def _company_messenger_chat_uf() -> str:
 def _company_max_chat_uf() -> str:
     return str(getattr(settings, 'BITRIX_UF_COMPANY_MAX_CHAT_ID', 'UF_CRM_1779436775') or 'UF_CRM_1779436775')
 
+
+def _contact_telegram_group_uf() -> str:
+    return str(getattr(settings, 'BITRIX_UF_TELEGRAM_GROUP_ID', '') or '').strip()
+
+def _company_telegram_group_uf() -> str:
+    return str(getattr(settings, 'BITRIX_UF_COMPANY_TELEGRAM_GROUP_ID', '') or '').strip()
+
 # Локальные маппинги (ID -> label) для iblock_element полей,
 # так как lists.element.get недоступен на текущем тарифе Bitrix.
 POTENTIAL_MOYSKLAD_LABELS = {
@@ -243,6 +250,7 @@ def sync_contacts(*, date_modify_from: str | None = None) -> tuple[int, int]:
                 "last_sale_at": _parse_dt(item.get("UF_CRM_CONTLASTSALE")),
                 "telegram_id": str(item.get("UF_CRM_1770617684") or ""),
                 "max_chat_id": str(item.get(_contact_max_chat_uf()) or ""),
+                "telegram_group_id": str(item.get(_contact_telegram_group_uf()) or ""),
                 "bitrix_date_modified": _parse_dt(item.get("DATE_MODIFY")),
                 "raw_data": item,
                 "parsed_data": {
@@ -284,6 +292,7 @@ def sync_companies(*, date_modify_from: str | None = None) -> tuple[int, int]:
                 "last_sale_at": _parse_dt(item.get("UF_CRM_LASTSALE")),
                 "messenger_chat_number": str(item.get(_company_messenger_chat_uf()) or ""),
                 "max_chat_id": str(item.get(_company_max_chat_uf()) or ""),
+                "telegram_group_id": str(item.get(_company_telegram_group_uf()) or ""),
                 "bitrix_date_modified": _parse_dt(item.get("DATE_MODIFY")),
                 "raw_data": item,
                 "parsed_data": {
@@ -349,6 +358,7 @@ def sync_contact_by_id(contact_id: int | str) -> bool:
             "messenger_chat_number": str(item.get(_contact_messenger_chat_uf()) or ""),
             "last_sale_at": _parse_dt(item.get("UF_CRM_CONTLASTSALE")),
             "telegram_id": str(item.get("UF_CRM_1770617684") or ""),
+            "telegram_group_id": str(item.get(_contact_telegram_group_uf()) or ""),
             "max_chat_id": str(item.get(_contact_max_chat_uf()) or ""),
             "bitrix_date_modified": _parse_dt(item.get("DATE_MODIFY")),
             "raw_data": item,
@@ -390,6 +400,7 @@ def sync_company_by_id(company_id: int | str) -> bool:
             "segment_value_id": segment_id,
             "segment_value": resolve_segment_label(segment_id),
             "last_sale_at": _parse_dt(item.get("UF_CRM_LASTSALE")),
+            "telegram_group_id": str(item.get(_company_telegram_group_uf()) or ""),
             "messenger_chat_number": str(item.get(_company_messenger_chat_uf()) or ""),
             "max_chat_id": str(item.get(_company_max_chat_uf()) or ""),
             "bitrix_date_modified": _parse_dt(item.get("DATE_MODIFY")),

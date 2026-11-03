@@ -34,6 +34,20 @@ def send_message(chat_id: str, text: str, parse_mode: str = 'Markdown') -> dict:
         return {'ok': False, 'error': data.get('description', r.text)}
     return data
 
+def create_chat_invite_link(chat_id: str) -> dict:
+    """Создать новую invite-ссылку Telegram-группы от имени бота."""
+    token = get_bot_token()
+    url = f'https://api.telegram.org/bot{token}/createChatInviteLink'
+    try:
+        response = requests.post(url, json={'chat_id': str(chat_id)}, timeout=30)
+        data = response.json()
+    except (requests.RequestException, ValueError) as exc:
+        return {'ok': False, 'error': str(exc)}
+    if not data.get('ok'):
+        return {'ok': False, 'error': data.get('description', response.text)}
+    return data
+
+
 
 def send_photo(chat_id: str, photo_path: str, caption: str = '', parse_mode: str = 'Markdown') -> dict:
     """Отправить фото с подписью (sendPhoto)."""

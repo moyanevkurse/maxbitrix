@@ -46,9 +46,10 @@
 - Публичный HTTPS-домен — Bitrix и MAX должны достучаться до сервера
 - Nginx (или другой reverse proxy) + TLS-сертификат (Let's Encrypt)
 - Аккаунт Bitrix24 с CRM и Открытыми линиями
-- Бот MAX (токен `MAX_BOT_TO
+- Бот MAX (токен `MAX_BOT_TOKEN`).
+- Telegram Bot API token (TELEGRAM_BOT_TOKEN), если нужны исходящие сообщения или приём обновлений
 - Playwright + Chromium на сервере
-- Постоянный профиль браузера (`MAX_GROUP_PROFILE_DIR`)
+- Профиль браузера и WS-токен для каждого MAX-аккаунта создания групп (значения по умолчанию — в .env; отдельная маршрутизация настраивается в админке)
 - Фоновый демон обновления WS-токена (`scripts/max_ws_token_daemon.py`)
 
 ---
@@ -62,7 +63,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 cp .env.example .env
-# Отредактируй .env (см. раздел 6)
+# Отредактируй .env (см. раздел 7)
 
 python manage.py migrate
 python manage.py createsuperuser
@@ -77,6 +78,8 @@ playwright install-deps   # системные зависимости Chromium �
 ```bash
 python manage.py runserver 0.0.0.0:8000
 celery -A config worker -l info
+# В отдельном терминале, если нужно принимать обновления Telegram:
+python manage.py run_telegram_bot
 ```
 
 На сервере см. раздел 5 — там gunicorn, nginx, systemd.
@@ -114,7 +117,8 @@ Bitrix и MAX принимают только **публичный HTTPS** бе�
 | **celery worker** | Создание MAX-групп, рассылки, sync |
 | **redis** | Брокер Celery |
 | **nginx** | HTTPS, прокси на gunicorn, раздача `/media/` |
-| **max_ws_token_daemon** | Браузер MAX + обновление WS-токена (раздел 10) |
+| **max_ws_token_daemon** (рекомендуется) | Обновление WS-токена MAX (раздел 10) |
+| **telegram-bot-polling** (опционально) | Получение обновлений Telegram и регистрация новых чатов |
 
 ### 5.2 Gunicorn
 
@@ -198,11 +202,38 @@ Restart=always
 WantedBy=multi-user.target
 ```
 
+Файл `/etc/systemd/system/telegram-bot-polling.service` — отдельный процесс long polling для приёма обновлений Telegram (добавление бота в группы и сообщения в личке):
+
+```ini
+[Unit]
+Description=Telegram Bot Updates (long polling)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=www-data
+WorkingDirectory=/path/to/Telegram-bot-for-mailings
+EnvironmentFile=/path/to/Telegram-bot-for-mailings/.env
+ExecStart=/path/to/venv/bin/python manage.py run_telegram_bot --timeout 30
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Этот сервис нужен, если сервер должен принимать обновления Telegram и автоматически регистрировать новые чаты. Для исходящих рассылок сам long polling не нужен. Если для бота был настроен webhook, перед запуском polling удали его методом deleteWebhook в Telegram Bot API. Не запускай polling одновременно в двух процессах: он использует getUpdates. При старте команда удаляет накопившиеся обновления Telegram.
+
 Файл `/etc/systemd/system/max-ws-token-daemon.service` — см. раздел 10.
 
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable --now telegram-bot telegram-bot-celery max-ws-token-daemon
+# Только если серверу нужно принимать обновления Telegram:
+sudo systemctl enable --now telegram-bot-polling
+# Если сервис уже включён — проверить статус и логи:
+sudo systemctl status telegram-bot-polling --no-pager
+sudo journalctl -u telegram-bot-polling -f --no-pager
 ```
 
 ---
@@ -610,7 +641,7 @@ python scripts/open_max_profile.py \
 4. `max_ws_create_group.py` — создание чата по WS
 5. REST MAX API — добавление участников, приветствие, аватар
 
-Если демон **не запущен** и токен протух — создание группы упадёт с auth-ошибкой.
+Если токен устарел, при `MAX_GROUP_REFRESH_ON_AUTH_FAIL=true` задача попробует обновить его через профиль выбранного аккаунта и повторить создание. Демон max_ws_token_daemon обновляет только профиль и файл токена, указанные в его systemd unit. Если сессия аккаунта истекла, потребуется повторный QR-вход.
 
 Настройки в `.env`:
 
@@ -654,7 +685,7 @@ python manage.py bind_openlines_events \
 
 1. **CRM → Контакт-центр → Открытые линии**
 2. Открыть линию с ID = `BITRIX_OPENLINE_LINE_ID`
-3. **Каналы / Коннекторы** → подключить **my_max_connector** (Telegram Bot Connector)
+3. **Каналы / Коннекторы** → подключить зарегистрированный коннектор с ID my_max_connector (имя задаётся параметром --name; в примере — MAX Connector)
 4. Убедиться, что линия **активна**, назначены **операторы**
 
 Без шага 3 сообщения из MAX уйдут с `session_id=None` — диалог в ОЛ не появится.
@@ -766,6 +797,7 @@ POST https://BASE/api/bitrix/run-mailing/?secret=BITRIX_MAILING_WEBHOOK_SECRET
 | Раздел | Назначение |
 |--------|------------|
 | **Openlines → Сотрудники (MAX-группы)** | Кого добавлять при создании группы (отдельно для контакта/компании) |
+| **Openlines → Аккаунты создания MAX-групп** | Профиль и WS-токен аккаунта-создателя отдельно для контактов и компаний |
 | **Openlines → Настройка приветствия MAX-группы** | Текст приветствия |
 | **Openlines → Bitrix portals** | OAuth-токены приложения |
 | **Mailings → Шаблоны рассылки** | Текст и медиа |
@@ -773,6 +805,19 @@ POST https://BASE/api/bitrix/run-mailing/?secret=BITRIX_MAILING_WEBHOOK_SECRET
 | **Mailings → Слепки контактов/компаний Bitrix** | Sync и просмотр `max_chat_id` |
 | **Mailings → Партнёры** | Зарегистрированные чаты (`max:-...`) |
 | **Mailings → История рассылок** | Лог отправок |
+
+Для **Openlines → Аккаунты создания MAX-групп** укажи разные `profile_dir` и `token_file` для контактов и компаний. Пути могут быть абсолютными или относительно каталога проекта. Поля, оставленные пустыми, используют `MAX_GROUP_PROFILE_DIR` и `MAX_GROUP_TOKEN_FILE` из `.env`. Текущий MAX-бот остаётся общим для обеих категорий; его ID и Bot API token по-прежнему задаются через `MAX_GROUP_BOT_USER_ID` и `MAX_BOT_TOKEN`.
+
+Для входа второго аккаунта создай отдельные профиль и файл токена, например:
+
+```bash
+python scripts/max_ws_token_keeper.py \
+  --profile-dir profile/max-company-account \
+  --save-env --env-file profile/max-company-token.env \
+  --timeout 900
+```
+
+Заверши вход по QR в видимом браузере, затем укажи эти же пути в записи «Компания». Для контактов можно оставить поля пустыми, чтобы использовать текущий аккаунт из `.env`.
 
 ---
 
@@ -827,26 +872,9 @@ python scripts/generate_max_webhook_secret.py --register \
   --update-types "message_created,bot_added,chat_title_changed"
 ```
 
-### Браузер MAX (см. раздел 10)
+### Браузер MAX
 
-```bash
-# Первый вход или повторный QR-логин:
-# keeper и daemon не должны одновременно использовать один профиль
-sudo systemctl stop max_token
-python scripts/max_ws_token_keeper.py \
-  --profile-dir profile/.max-manual-profile \
-  --save-env --env-file profile/max_ws_token.env
-sudo systemctl start max_token
-
-# Демон вручную (только если systemd-сервис max_token не используется)
-python scripts/max_ws_token_daemon.py \
-  --profile-dir profile/.max-manual-profile \
-  --env-file profile/max_ws_token.env \
-  --headless --interval 300
-
-# Открыть профиль вручную (проверка сессии)
-python scripts/open_max_profile.py --profile-dir profile/.max-manual-profile
-```
+Первый вход, повторный QR-логин, проверка профиля и запуск демона описаны в разделе 10.
 
 ---
 
@@ -859,7 +887,7 @@ python scripts/open_max_profile.py --profile-dir profile/.max-manual-profile
    - `BITRIX_OPENLINE_PLACEMENT_HANDLER`
    - `BITRIX_OPENLINE_EVENTS_HANDLER`
    - `MAX_GROUP_AVATAR_URL` (если используется)
-2. Перезапуск systemd-сервисов (gunicorn, celery, max-ws-token-daemon)
+2. Перезапуск systemd-сервисов (gunicorn, celery, max-ws-token-daemon и telegram-bot-polling, если он включён)
 3. `register_openline_connector` с новым URL
 4. `bind_openlines_events` (или `Handler already binded` — ок)
 5. `generate_max_webhook_secret.py --register` с новым URL
@@ -878,10 +906,6 @@ python scripts/open_max_profile.py --profile-dir profile/.max-manual-profile
 
 ---
 
-
-
----
-
 ## Быстрый старт (production на сервере)
 
 ```bash
@@ -889,11 +913,11 @@ python scripts/open_max_profile.py --profile-dir profile/.max-manual-profile
 # 2. migrate + collectstatic + superuser
 # 3. playwright install chromium && playwright install-deps
 # 4. Первый логин MAX: max_ws_token_keeper → profile/max_ws_token.env
-# 5. systemd: gunicorn + celery + max_ws_token_daemon
+# 5. systemd: gunicorn + celery + max_ws_token_daemon; telegram-bot-polling — если нужны входящие обновления Telegram
 # 6. nginx + SSL (certbot)
 # 7. register_openline_connector + bind_openlines_events + MAX webhook --register
 # 8. Bitrix UI: коннектор на открытой линии
-# 9. Админка: сотрудники MAX-группы, приветствие
+# 9. Админка: сотрудники, приветствие и маршрутизация MAX-аккаунтов для контактов/компаний
 # 10. Робот: POST create-group → бот в группу MAX → связка в CRM
 ```
 

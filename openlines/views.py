@@ -1,7 +1,9 @@
 import json
+import hmac
 import logging
 import random
 import re
+import uuid
 import time
 from pathlib import Path
 
@@ -1273,4 +1275,147 @@ def bitrix_handler(request: HttpRequest) -> HttpResponse:
     except Exception as e:
         logger.exception('Bitrix handler error: %s', e)
         return JsonResponse({'error': str(e)}, status=500)
+
+
+
+def _telegram_group_webhook_secret_ok(request: HttpRequest) -> bool:
+    """Новый TG endpoint не запускается без явно заданного секрета."""
+
+    expected = str(getattr(settings, 'TELEGRAM_GROUP_WEBHOOK_SECRET', '') or '').strip()
+    # Обычный HTTP-робот Bitrix даёт задать только URL, без заголовков.
+    # Поэтому допускаем тот же секрет в query/form-параметре, но не без него.
+    provided = str(
+        request.headers.get("X-Telegram-Group-Secret")
+        or request.GET.get("secret")
+        or request.POST.get("secret")
+        or ""
+    ).strip()
+    return bool(expected and provided and hmac.compare_digest(provided, expected))
+
+
+def _telegram_group_user_refs(value) -> list[str]:
+    if isinstance(value, list):
+        raw_items = value
+    else:
+        raw_items = str(value or '').replace('\n', ',').split(',')
+    result: list[str] = []
+    for item in raw_items:
+        if isinstance(item, dict):
+            item = item.get('username') or item.get('user_id') or item.get('id') or ''
+        reference = str(item or '').strip()
+        if reference and reference not in result:
+            result.append(reference)
+    return result
+
+
+@csrf_exempt
+@require_http_methods(['POST'])
+def telegram_create_group_webhook(request: HttpRequest) -> HttpResponse:
+    """
+    Bitrix -> Celery -> MTProto service account -> Telegram supergroup.
+
+    Пример JSON:
+    {"entity_type": "contact", "entity_id": "123", "request_id": "deal-456",
+     "title": "...", "usernames": ["@client", "@manager"]}
+    """
+    if not _telegram_group_webhook_secret_ok(request):
+        return JsonResponse({'ok': False, 'error': 'forbidden'}, status=403)
+
+    payload: dict = {}
+    if (request.content_type or '').startswith('application/json'):
+        try:
+            decoded = json.loads(request.body.decode('utf-8') or '{}')
+        except json.JSONDecodeError:
+            return JsonResponse({'ok': False, 'error': 'invalid_json'}, status=400)
+        if not isinstance(decoded, dict):
+            return JsonResponse({'ok': False, 'error': 'JSON object expected'}, status=400)
+        payload.update(decoded)
+
+    # Тот же контракт, что и MAX: Bitrix-робот передаёт параметры query/form.
+    payload.update(request.POST.dict())
+    payload.update(request.GET.dict())
+
+    entity_type, entity_id = _extract_bitrix_entity_ref(payload)
+    explicit_type = str(payload.get("entity_type") or payload.get("entity") or "").strip().lower()
+    explicit_id = str(
+        payload.get("entity_id")
+        or payload.get("contact_id")
+        or payload.get("company_id")
+        or ""
+    ).strip()
+    entity_type = explicit_type or entity_type
+    entity_id = explicit_id or entity_id
+    if entity_type not in {'contact', 'company'} or not entity_id.isdigit():
+        return JsonResponse(
+            {'ok': False, 'error': 'entity_type (contact/company) and numeric entity_id are required'},
+            status=400,
+        )
+
+    title = str(payload.get('title') or '').strip()
+    if not title:
+        title = _build_generated_group_title(payload=payload, entity_type=entity_type, entity_id=entity_id)
+    title = title[:255]
+
+    user_refs = _telegram_group_user_refs(payload.get('usernames') or payload.get('users') or payload.get('user_ids'))
+    request_id = str(payload.get('request_id') or payload.get('idempotency_key') or '').strip()
+    request_key = request_id or f'{entity_type}:{entity_id}'
+    if len(request_key) > 255:
+        return JsonResponse({'ok': False, 'error': 'request_id is too long'}, status=400)
+
+    from .models import TelegramGroupProvision
+    from .tasks import create_telegram_group_from_webhook
+
+    provision, created = TelegramGroupProvision.objects.get_or_create(
+        request_key=request_key,
+        defaults={
+            'entity_type': entity_type,
+            'entity_id': entity_id,
+            'title': title,
+            'requested_user_refs': user_refs,
+        },
+    )
+    if not created:
+        if provision.status == TelegramGroupProvision.STATUS_SUCCESS:
+            suffix = f':{uuid.uuid4().hex}'
+            request_key = f'{request_key[:255 - len(suffix)]}{suffix}'
+            provision = TelegramGroupProvision.objects.create(
+                request_key=request_key,
+                entity_type=entity_type,
+                entity_id=entity_id,
+                title=title,
+                requested_user_refs=user_refs,
+            )
+        elif provision.status == TelegramGroupProvision.STATUS_ERROR and str(payload.get('retry') or '').lower() in {'1', 'true', 'yes'}:
+            provision.status = TelegramGroupProvision.STATUS_QUEUED
+            provision.error_message = ''
+            provision.requested_user_refs = user_refs or provision.requested_user_refs
+            provision.title = title or provision.title
+            provision.save(update_fields=['status', 'error_message', 'requested_user_refs', 'title', 'updated_at'])
+        else:
+            return JsonResponse(
+                {
+                    'ok': provision.status == TelegramGroupProvision.STATUS_SUCCESS,
+                    'queued': provision.status in {TelegramGroupProvision.STATUS_QUEUED, TelegramGroupProvision.STATUS_CREATING},
+                    'duplicate': True,
+                    'provision_id': provision.pk,
+                    'status': provision.status,
+                    'chat_id': provision.telegram_chat_id,
+                },
+                status=200,
+            )
+
+    task = create_telegram_group_from_webhook.delay(provision_id=provision.pk)
+    return JsonResponse(
+        {
+            'ok': True,
+            'queued': True,
+            'provision_id': provision.pk,
+            'task_id': task.id,
+            'title': provision.title,
+            'entity_type': provision.entity_type,
+            'entity_id': provision.entity_id,
+            'requested_users': len(provision.requested_user_refs or []),
+        },
+        status=202,
+    )
 

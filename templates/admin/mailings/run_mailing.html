@@ -18,6 +18,20 @@
   </fieldset>
 
   <fieldset class="module">
+    <h2>Каналы доставки</h2>
+    <p>
+      Один шаблон и его вложения уйдут во все отмеченные каналы.
+      Telegram-рассылка идёт только в группы с сохранённым <code>telegram_group_id</code>;
+      личные сообщения в Telegram не создаются.
+    </p>
+    <div class="form-row">
+      <label>Отправить через:</label>
+      <label><input type="checkbox" name="channels" value="max" {% if 'max' in selected_channels %}checked{% endif %}> MAX</label>
+      <label><input type="checkbox" name="channels" value="telegram" {% if 'telegram' in selected_channels %}checked{% endif %}> Telegram-группы</label>
+    </div>
+  </fieldset>
+
+  <fieldset class="module">
     <h2>Фильтры из Bitrix snapshot</h2>
     <p>Фильтры добавляют получателей автоматически по данным клиентов/компаний из snapshot.</p>
     <div class="form-row">

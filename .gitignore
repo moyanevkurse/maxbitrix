@@ -9,4 +9,5 @@ venv/
 .Python
 profile/.max-manual-profile/
 profile/max_ws_token.env
+profile/telegram_group.session*
 /.max-playwright-profile/

@@ -286,8 +286,18 @@ def create_max_group_from_webhook(
     contact_email: str = "",
     avatar_url: str = "",
 ):
+    normalized_entity_type = str(entity_type or "").strip().lower()
     profile_dir = str(getattr(settings, "MAX_GROUP_PROFILE_DIR", "profile/.max-manual-profile"))
     token_file = str(getattr(settings, "MAX_GROUP_TOKEN_FILE", "profile/max_ws_token.env"))
+    account_name = "текущий аккаунт из .env"
+    if normalized_entity_type in {"contact", "company"}:
+        from .models import MaxGroupCreatorConfig
+
+        creator_config = MaxGroupCreatorConfig.objects.filter(entity_type=normalized_entity_type).first()
+        if creator_config:
+            profile_dir = str(creator_config.profile_dir or profile_dir).strip()
+            token_file = str(creator_config.token_file or token_file).strip()
+            account_name = creator_config.account_name or creator_config.get_entity_type_display()
     refresh_timeout = int(getattr(settings, "MAX_GROUP_REFRESH_TIMEOUT", 45) or 45)
     refresh_each_task = bool(getattr(settings, "MAX_GROUP_REFRESH_EACH_TASK", False))
     refresh_on_auth_fail = bool(getattr(settings, "MAX_GROUP_REFRESH_ON_AUTH_FAIL", True))
@@ -299,7 +309,7 @@ def create_max_group_from_webhook(
     task_interval_state_path = Path(settings.BASE_DIR) / "profile" / ".max_group_task_interval.state"
 
     logger.info(
-        "MAX group task started: task_id=%s source=%s request_id=%s title=%s users=%s entity=%s:%s",
+        "MAX group task started: task_id=%s source=%s request_id=%s title=%s users=%s entity=%s:%s creator=%s",
         self.request.id,
         source,
         request_id,
@@ -307,6 +317,7 @@ def create_max_group_from_webhook(
         user_ids,
         entity_type,
         entity_id,
+        account_name,
     )
 
     interval_ok, retry_after_sec = _check_and_mark_task_interval(
@@ -447,7 +458,6 @@ def create_max_group_from_webhook(
                 exc,
             )
 
-    normalized_entity_type = str(entity_type or "").strip().lower()
     should_run_phone_fallback = (
         created_chat_id
         and bool(getattr(settings, "MAX_GROUP_PHONE_RESOLVE_ENABLED", True))
@@ -739,4 +749,115 @@ def _bind_max_group_mapping(
             updated = BitrixContactSnapshot.objects.filter(email__iexact=normalized_email).update(max_chat_id=partner_chat_id)
             if updated:
                 logger.info("MAX group mapped by email fallback: email=%s updated=%s", normalized_email, updated)
+
+
+@shared_task(bind=True)
+def create_telegram_group_from_webhook(self, *, provision_id: int):
+    """Создать Telegram-супергруппу по заявке Bitrix без браузера."""
+    from .models import TelegramGroupProvision
+
+    with transaction.atomic():
+        provision = TelegramGroupProvision.objects.select_for_update().filter(pk=provision_id).first()
+        if not provision:
+            return {'ok': False, 'error': 'Telegram group provision not found'}
+        if provision.status == TelegramGroupProvision.STATUS_SUCCESS:
+            return {
+                'ok': True,
+                'skipped': True,
+                'reason': 'already_created',
+                'chat_id': provision.telegram_chat_id,
+            }
+        if provision.status == TelegramGroupProvision.STATUS_CREATING:
+            return {'ok': False, 'skipped': True, 'reason': 'already_creating'}
+        provision.status = TelegramGroupProvision.STATUS_CREATING
+        provision.error_message = ''
+        provision.save(update_fields=['status', 'error_message', 'updated_at'])
+
+    try:
+        from .services_telegram_groups import TelegramGroupCreateError, create_telegram_group
+        from .telegram_group_bitrix_sync import bind_telegram_group_to_bitrix
+        from .telegram_group_members import resolve_telegram_group_user_refs
+
+        entity_refs = resolve_telegram_group_user_refs(provision.entity_type, provision.entity_id)
+        requested_refs = list(provision.requested_user_refs or [])
+        all_refs: list = []
+        for reference in requested_refs + entity_refs:
+            if reference not in all_refs:
+                all_refs.append(reference)
+
+        result = create_telegram_group(
+            title=provision.title,
+            member_refs=all_refs,
+            bot_username=str(getattr(settings, 'TELEGRAM_GROUP_BOT_USERNAME', '') or ''),
+            avatar_url=str(getattr(settings, 'TELEGRAM_GROUP_AVATAR_URL', '') or ''),
+        )
+        mapping = bind_telegram_group_to_bitrix(
+            entity_type=provision.entity_type,
+            entity_id=provision.entity_id,
+            chat_id=result['chat_id'],
+            title=provision.title,
+        )
+        result['audit'] = {
+            'group': {
+                'title': provision.title,
+                'chat_id': str(result['chat_id']),
+            },
+            'participants': {
+                'requested': all_refs,
+                'added': result.get('invited') or [],
+                'not_added': result.get('invite_errors') or [],
+            },
+            'bot_admin': result.get('bot_admin', ''),
+        }
+        result['bitrix_mapping'] = mapping
+
+        with transaction.atomic():
+            provision = TelegramGroupProvision.objects.select_for_update().get(pk=provision_id)
+            provision.status = TelegramGroupProvision.STATUS_SUCCESS
+            provision.telegram_chat_id = str(result['chat_id'])
+            provision.result_data = result
+            provision.error_message = ''
+            provision.save(update_fields=['status', 'telegram_chat_id', 'result_data', 'error_message', 'updated_at'])
+
+        from .telegram_group_welcome import welcome_content
+
+        welcome_text, welcome_files = welcome_content()
+        if welcome_text.strip() or welcome_files:
+            send_welcome_to_telegram_group.apply_async(
+                kwargs={'chat_id': str(result['chat_id']), 'title': provision.title},
+                countdown=max(int(getattr(settings, 'TELEGRAM_GROUP_WELCOME_DELAY_SEC', 15) or 0), 0),
+            )
+        logger.info(
+            'Telegram group audit: task_id=%s provision=%s title=%r chat_id=%s requested=%s added=%s '
+            'not_added=%s bot_admin=%s',
+            self.request.id,
+            provision_id,
+            provision.title,
+            result['chat_id'],
+            all_refs,
+            result.get('invited') or [],
+            result.get('invite_errors') or [],
+            result.get('bot_admin', ''),
+        )
+        return result
+    except Exception as exc:  # noqa: BLE001
+        logger.exception('Telegram group create failed: provision=%s error=%s', provision_id, exc)
+        with transaction.atomic():
+            provision = TelegramGroupProvision.objects.select_for_update().get(pk=provision_id)
+            provision.status = TelegramGroupProvision.STATUS_ERROR
+            provision.error_message = str(exc)[:4000]
+            provision.save(update_fields=['status', 'error_message', 'updated_at'])
+        return {'ok': False, 'error': str(exc), 'provision_id': provision_id}
+
+
+@shared_task(bind=True)
+def send_welcome_to_telegram_group(self, *, chat_id: str, title: str = ''):
+    """Отправить приветствие и вложения уже добавленным в группу Telegram-ботом."""
+    from .telegram_group_welcome import send_telegram_group_welcome
+
+    try:
+        return send_telegram_group_welcome(chat_id=str(chat_id), title=title)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception('Telegram group welcome failed: task_id=%s chat_id=%s', self.request.id, chat_id)
+        return {'ok': False, 'error': str(exc), 'chat_id': str(chat_id)}
 

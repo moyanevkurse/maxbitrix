@@ -133,6 +133,30 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Telegram
 TELEGRAM_BOT_TOKEN = env('TELEGRAM_BOT_TOKEN', default='')
 
+# Telegram user API (MTProto): отдельный служебный аккаунт для автоматического
+# создания групп. Браузер не используется: после единоразовой авторизации по
+# коду Telethon хранит локальный session-файл.
+TELEGRAM_GROUP_API_ID = env.int('TELEGRAM_GROUP_API_ID', default=0)
+TELEGRAM_GROUP_API_HASH = env('TELEGRAM_GROUP_API_HASH', default='')
+TELEGRAM_GROUP_SESSION_FILE = env('TELEGRAM_GROUP_SESSION_FILE', default='profile/telegram_group.session')
+TELEGRAM_GROUP_BOT_USERNAME = env('TELEGRAM_GROUP_BOT_USERNAME', default='')
+TELEGRAM_GROUP_BOT_GRANT_ADMIN = env.bool('TELEGRAM_GROUP_BOT_GRANT_ADMIN', default=True)
+TELEGRAM_GROUP_WEBHOOK_SECRET = env('TELEGRAM_GROUP_WEBHOOK_SECRET', default='')
+TELEGRAM_GROUP_AVATAR_URL = env('TELEGRAM_GROUP_AVATAR_URL', default='')
+TELEGRAM_GROUP_WELCOME_TEXT = env('TELEGRAM_GROUP_WELCOME_TEXT', default='')
+TELEGRAM_GROUP_WELCOME_DELAY_SEC = env.int('TELEGRAM_GROUP_WELCOME_DELAY_SEC', default=15)
+TELEGRAM_GROUP_INVITE_LINK_ENABLED = env.bool('TELEGRAM_GROUP_INVITE_LINK_ENABLED', default=True)
+TELEGRAM_GROUP_INVITE_LINK_DELAY_SEC = env.int('TELEGRAM_GROUP_INVITE_LINK_DELAY_SEC', default=3)
+TELEGRAM_GROUP_INVITE_LINK_TEXT = env(
+    'TELEGRAM_GROUP_INVITE_LINK_TEXT',
+    default='Ссылка для входа в группу:\n{link}',
+)
+# Пустой UF отключает обратную запись в Bitrix для соответствующей сущности.
+BITRIX_UF_TELEGRAM_GROUP_ID = env('BITRIX_UF_TELEGRAM_GROUP_ID', default='')
+BITRIX_UF_COMPANY_TELEGRAM_GROUP_ID = env('BITRIX_UF_COMPANY_TELEGRAM_GROUP_ID', default='')
+BITRIX_UF_TELEGRAM_USERNAME = env('BITRIX_UF_TELEGRAM_USERNAME', default='')
+BITRIX_UF_USER_TELEGRAM_USERNAME = env('BITRIX_UF_USER_TELEGRAM_USERNAME', default='')
+
 # Celery
 CELERY_BROKER_URL = env('CELERY_BROKER_URL', default='redis://localhost:6379/0')
 CELERY_RESULT_BACKEND = CELERY_BROKER_URL

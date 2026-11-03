@@ -398,6 +398,59 @@ def _is_max_group_target(chat_id: str) -> bool:
     return raw.startswith('-')
 
 
+MAILING_CHANNEL_MAX = 'max'
+MAILING_CHANNEL_TELEGRAM = 'telegram'
+MAILING_CHANNELS = {MAILING_CHANNEL_MAX, MAILING_CHANNEL_TELEGRAM}
+
+
+def _normalize_mailing_channels(channels, *, default_to_max: bool = True) -> set[str]:
+    """Returns only known delivery channels.
+
+    Existing Bitrix integrations do not pass a channel at all.  They keep their
+    historical MAX-only behaviour through ``default_to_max``.  The admin UI
+    passes ``default_to_max=False`` and requires an explicit choice.
+    """
+    selected = {str(channel).strip().lower() for channel in (channels or [])}
+    selected &= MAILING_CHANNELS
+    if not selected and default_to_max:
+        return {MAILING_CHANNEL_MAX}
+    return selected
+
+
+def _normalize_telegram_group_target(value: str) -> str:
+    """Telegram group/supergroup ids are negative numeric values.
+
+    Do not accept positive Telegram user ids here: this sender is deliberately
+    limited to groups and must never turn a snapshot value into a direct message.
+    """
+    target = str(value or '').strip()
+    return target if re.fullmatch(r'-\d+', target) else ''
+
+
+def _extract_contact_telegram_group_targets(snapshot) -> tuple[dict[str, str], str]:
+    target = _normalize_telegram_group_target(getattr(snapshot, 'telegram_group_id', ''))
+    if target:
+        return {target: 'telegram_group_id'}, ''
+    if getattr(snapshot, 'telegram_group_id', ''):
+        return {}, 'Есть telegram_group_id, но это не ID Telegram-группы'
+    return {}, 'Нет telegram_group_id'
+
+
+def _extract_company_direct_telegram_group_targets(snapshot) -> dict[str, str]:
+    target = _normalize_telegram_group_target(getattr(snapshot, 'telegram_group_id', ''))
+    return {target: 'telegram_group_id (компания)'} if target else {}
+
+
+def _is_target_allowed_for_chat_kinds(chat_id: str, chat_kinds: list[str]) -> bool:
+    """Treat every selected Telegram target as a group; retain MAX's old rule."""
+    if not chat_kinds:
+        return True
+    if _normalize_telegram_group_target(chat_id):
+        return 'group' in chat_kinds
+    is_group_target = _is_max_group_target(chat_id)
+    return ('group' in chat_kinds and is_group_target) or ('private' in chat_kinds and not is_group_target)
+
+
 def _filter_snapshots_by_city(qs, city: str):
     """Подстрока в address, без учёта регистра (icontains / ILIKE)."""
     needle = str(city or '').strip()
@@ -416,6 +469,7 @@ def _collect_recipients_from_filters_data(
     potentials: list[str],
     chat_kinds: list[str],
     contact_job_titles: list[str] | None = None,
+    channels: list[str] | set[str] | None = None,
 ) -> dict:
     from mailings.models import BitrixCompanySnapshot, BitrixContactSnapshot, Partner
 
@@ -424,6 +478,7 @@ def _collect_recipients_from_filters_data(
     included: list[dict] = []
     excluded: list[dict] = []
     contact_job_titles = [str(v).strip() for v in (contact_job_titles or []) if str(v).strip()]
+    selected_channels = _normalize_mailing_channels(channels)
 
     if group_ids:
         partner_pks.update(
@@ -433,7 +488,18 @@ def _collect_recipients_from_filters_data(
     # Chat kind checkboxes тоже должны уметь сами запускать подбор из snapshot.
     # Иначе сценарий "покажи все личные" / "покажи все группы" возвращает пусто.
     city_needle = str(city_filter or '').strip()
-    if city_needle or sleep_status or company_types or potentials or chat_kinds or contact_job_titles:
+    # Для Telegram отдельный "все группы" источник — сохранённые group ID.
+    # MAX без фильтров сохраняет прежнее поведение и сам по себе не разворачивает
+    # всю базу snapshot.
+    if (
+        city_needle
+        or sleep_status
+        or company_types
+        or potentials
+        or chat_kinds
+        or contact_job_titles
+        or MAILING_CHANNEL_TELEGRAM in selected_channels
+    ):
         now = timezone.now()
         threshold = now - timedelta(days=30)
 
@@ -465,6 +531,7 @@ def _collect_recipients_from_filters_data(
                 'bitrix_contact_id',
                 'full_name',
                 'max_chat_id',
+                'telegram_group_id',
                 'raw_data',
             )
         )
@@ -482,8 +549,21 @@ def _collect_recipients_from_filters_data(
         # Фильтр типа контакта всегда включает прямые контакты.
         include_direct_contacts = (not bool(company_types or potentials)) or bool(contact_job_titles)
         if include_direct_contacts:
-            for contact in contact_qs.only('bitrix_contact_id', 'full_name', 'max_chat_id', 'raw_data'):
-                targets, reason = _extract_contact_max_targets(contact)
+            for contact in contact_qs.only(
+                'bitrix_contact_id', 'full_name', 'max_chat_id', 'telegram_group_id', 'raw_data'
+            ):
+                targets: dict[str, str] = {}
+                reasons: list[str] = []
+                if MAILING_CHANNEL_MAX in selected_channels:
+                    max_targets, reason = _extract_contact_max_targets(contact)
+                    targets.update(max_targets)
+                    if not max_targets:
+                        reasons.append(reason)
+                if MAILING_CHANNEL_TELEGRAM in selected_channels:
+                    telegram_targets, reason = _extract_contact_telegram_group_targets(contact)
+                    targets.update(telegram_targets)
+                    if not telegram_targets:
+                        reasons.append(reason)
                 if targets:
                     for target, source in targets.items():
                         recipient_chat_ids.add(target)
@@ -502,7 +582,7 @@ def _collect_recipients_from_filters_data(
                             'kind': 'contact',
                             'entity_id': str(contact.bitrix_contact_id),
                             'name': _contact_display_name(contact),
-                            'reason': reason,
+                            'reason': '; '.join(reasons) or 'Нет подходящего адресата',
                         }
                     )
 
@@ -511,12 +591,24 @@ def _collect_recipients_from_filters_data(
             bool(contact_job_titles) and not bool(company_types or potentials or city_needle or sleep_status)
         )
         if include_companies:
-            for company in company_qs.only('bitrix_company_id', 'title', 'max_chat_id', 'raw_data'):
-                company_targets = _extract_company_direct_max_targets(company)
+            for company in company_qs.only(
+                'bitrix_company_id', 'title', 'max_chat_id', 'telegram_group_id', 'raw_data'
+            ):
+                company_targets: dict[str, str] = {}
+                if MAILING_CHANNEL_MAX in selected_channels:
+                    company_targets.update(_extract_company_direct_max_targets(company))
+                if MAILING_CHANNEL_TELEGRAM in selected_channels:
+                    company_targets.update(_extract_company_direct_telegram_group_targets(company))
                 linked_contacts = contacts_by_company_id.get(str(company.bitrix_company_id), [])
                 linked_targets: dict[str, str] = {}
                 for contact in linked_contacts:
-                    targets, _ = _extract_contact_max_targets(contact)
+                    targets: dict[str, str] = {}
+                    if MAILING_CHANNEL_MAX in selected_channels:
+                        max_targets, _ = _extract_contact_max_targets(contact)
+                        targets.update(max_targets)
+                    if MAILING_CHANNEL_TELEGRAM in selected_channels:
+                        telegram_targets, _ = _extract_contact_telegram_group_targets(contact)
+                        targets.update(telegram_targets)
                     for target, source in targets.items():
                         linked_targets.setdefault(target, f'{source}; связанный контакт {_contact_display_name(contact)}')
 
@@ -539,9 +631,20 @@ def _collect_recipients_from_filters_data(
                             'kind': 'company',
                             'entity_id': str(company.bitrix_company_id),
                             'name': _company_display_name(company),
-                            'reason': 'Нет MAX target в компании и у связанных контактов',
+                            'reason': 'Нет адресата выбранного канала в компании и у связанных контактов',
                         }
                     )
+
+    # MAX может отправляться всем историческим типам Partner. Telegram же в
+    # этой странице принципиально оставляем только для Partner-групп.
+    if partner_pks:
+        allowed_partner_qs = Partner.objects.filter(pk__in=partner_pks, is_active=True)
+        channel_filter = Q()
+        if MAILING_CHANNEL_MAX in selected_channels:
+            channel_filter |= Q(chat_id__startswith='max:')
+        if MAILING_CHANNEL_TELEGRAM in selected_channels:
+            channel_filter |= ~Q(chat_id__startswith='max:') & Q(chat_type=Partner.TYPE_GROUP)
+        partner_pks = set(allowed_partner_qs.filter(channel_filter).values_list('pk', flat=True))
 
     if chat_kinds:
         allowed_types = set()
@@ -562,11 +665,7 @@ def _collect_recipients_from_filters_data(
         filtered_ids = set()
         allowed_chat_id_kinds: set[str] = set()
         for chat_id in recipient_chat_ids:
-            is_group_target = _is_max_group_target(chat_id)
-            if 'private' in chat_kinds and not is_group_target:
-                filtered_ids.add(chat_id)
-                allowed_chat_id_kinds.add(chat_id)
-            if 'group' in chat_kinds and is_group_target:
+            if _is_target_allowed_for_chat_kinds(chat_id, chat_kinds):
                 filtered_ids.add(chat_id)
                 allowed_chat_id_kinds.add(chat_id)
         recipient_chat_ids = filtered_ids
@@ -599,6 +698,7 @@ def _collect_recipients_from_filters_data(
         'recipient_chat_ids': recipient_chat_ids,
         'included': deduped_included,
         'excluded': deduped_excluded,
+        'channels': sorted(selected_channels),
     }
 
 
@@ -612,6 +712,7 @@ def _collect_recipients_from_filters(
     potentials: list[str],
     chat_kinds: list[str],
     contact_job_titles: list[str] | None = None,
+    channels: list[str] | set[str] | None = None,
 ) -> tuple[set[int], set[str]]:
     data = _collect_recipients_from_filters_data(
         group_ids=group_ids,
@@ -622,6 +723,7 @@ def _collect_recipients_from_filters(
         potentials=potentials,
         chat_kinds=chat_kinds,
         contact_job_titles=contact_job_titles,
+        channels=channels,
     )
     return data['partner_pks'], data['recipient_chat_ids']
 

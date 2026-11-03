@@ -5,6 +5,7 @@ celery[redis]>=5.3
 redis>=5.0
 requests>=2.31
 python-telegram-bot>=21.0
+Telethon>=1.36,<2
 websocket-client>=1.8
 playwright>=1.52
 psycopg[binary]

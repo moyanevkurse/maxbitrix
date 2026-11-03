@@ -158,4 +158,3 @@ def resolve_max_user_id_via_ws(
     if resolved_user_id <= 0:
         raise MaxPhoneResolveError(f"user_id not found in resolver output: {result.stdout.strip()}")
     return resolved_user_id
-

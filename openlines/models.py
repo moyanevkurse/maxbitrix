@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError
 from django.db import models
 
 
@@ -151,6 +152,63 @@ class MaxGroupWelcomeAttachment(models.Model):
         return self.file.name or f'Attachment #{self.pk}'
 
 
+class MaxGroupCreatorConfig(models.Model):
+    """MAX account used to create groups for a Bitrix entity type."""
+
+    ENTITY_CONTACT = 'contact'
+    ENTITY_COMPANY = 'company'
+    ENTITY_CHOICES = (
+        (ENTITY_CONTACT, 'Контакт'),
+        (ENTITY_COMPANY, 'Компания'),
+    )
+
+    entity_type = models.CharField(
+        'Для кого создаются группы',
+        max_length=16,
+        choices=ENTITY_CHOICES,
+        unique=True,
+    )
+    account_name = models.CharField(
+        'Название MAX-аккаунта',
+        max_length=100,
+        blank=True,
+        default='',
+    )
+    profile_dir = models.CharField(
+        'Папка профиля аккаунта',
+        max_length=512,
+        blank=True,
+        default='',
+        help_text='Путь к профилю Playwright. Если пусто, используется MAX_GROUP_PROFILE_DIR из .env.',
+    )
+    token_file = models.CharField(
+        'Файл WS-токена аккаунта',
+        max_length=512,
+        blank=True,
+        default='',
+        help_text='Путь к файлу токена этого MAX-аккаунта. Если пусто, используется MAX_GROUP_TOKEN_FILE из .env.',
+    )
+    created_at = models.DateTimeField('Создано', auto_now_add=True)
+    updated_at = models.DateTimeField('Обновлено', auto_now=True)
+
+    class Meta:
+        verbose_name = 'Аккаунт создания MAX-групп'
+        verbose_name_plural = 'Аккаунты создания MAX-групп'
+        ordering = ('entity_type',)
+
+    def clean(self):
+        super().clean()
+        if bool(self.profile_dir.strip()) != bool(self.token_file.strip()):
+            raise ValidationError({
+                'profile_dir': 'Укажите профиль и файл WS-токена вместе либо оставьте оба поля пустыми.',
+                'token_file': 'Укажите профиль и файл WS-токена вместе либо оставьте оба поля пустыми.',
+            })
+
+    def __str__(self) -> str:
+        entity = self.get_entity_type_display()
+        return f'{entity}: {self.account_name or "MAX аккаунт"}'
+
+
 class MaxGroupStaffMember(models.Model):
     """
     Сотрудники для добавления в MAX-группу при создании из контакта или компании.
@@ -204,4 +262,102 @@ class MaxGroupStaffMember(models.Model):
         if self.max_user_id:
             return f'{label} (max:{self.max_user_id})'
         return label
+
+
+class TelegramGroupWelcomeConfig(models.Model):
+    """Редактируемое из админки приветствие для автоматически созданных TG-групп."""
+
+    welcome_text = models.TextField('Текст приветствия', blank=True, default='')
+    is_active = models.BooleanField('Активно', default=True)
+    created_at = models.DateTimeField('Создано', auto_now_add=True)
+    updated_at = models.DateTimeField('Обновлено', auto_now=True)
+
+    class Meta:
+        verbose_name = 'Приветствие Telegram-групп'
+        verbose_name_plural = 'Приветствия Telegram-групп'
+        ordering = ['-updated_at', '-id']
+
+    def __str__(self) -> str:
+        return (self.welcome_text or '').strip()[:60] or '—'
+
+
+class TelegramGroupWelcomeAttachment(models.Model):
+    config = models.ForeignKey(
+        TelegramGroupWelcomeConfig,
+        on_delete=models.CASCADE,
+        related_name='attachments',
+        verbose_name='Приветствие',
+    )
+    file = models.FileField('Файл', upload_to='openlines/telegram-welcome/%Y/%m/')
+    created_at = models.DateTimeField('Создан', auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Вложение приветствия Telegram-групп'
+        verbose_name_plural = 'Вложения приветствия Telegram-групп'
+        ordering = ['created_at', 'id']
+
+
+class TelegramGroupStaffMember(models.Model):
+    """Сотрудник, добавляемый служебным TG-аккаунтом в новые группы."""
+
+    name = models.CharField('Имя', max_length=255, blank=True, default='')
+    telegram_username = models.CharField(
+        'Telegram username', max_length=128, blank=True, default='',
+        help_text='Без @. Предпочтительный способ добавить пользователя через MTProto.',
+    )
+    telegram_user_id = models.PositiveBigIntegerField('Telegram user ID', null=True, blank=True)
+    bitrix_user_id = models.CharField('ID пользователя Bitrix', max_length=64, blank=True, default='')
+    add_for_contact = models.BooleanField('Добавлять из контакта', default=True)
+    add_for_company = models.BooleanField('Добавлять из компании', default=True)
+    sort_order = models.PositiveIntegerField('Порядок', default=0)
+    is_active = models.BooleanField('Активен', default=True)
+    created_at = models.DateTimeField('Создано', auto_now_add=True)
+    updated_at = models.DateTimeField('Обновлено', auto_now=True)
+
+    class Meta:
+        verbose_name = 'Сотрудник (Telegram-группы)'
+        verbose_name_plural = 'Сотрудники (Telegram-группы)'
+        ordering = ['sort_order', 'id']
+
+    def __str__(self) -> str:
+        return self.name or self.telegram_username or str(self.telegram_user_id or self.pk)
+
+
+class TelegramGroupProvision(models.Model):
+    """Идемпотентная заявка Bitrix на создание одной Telegram-супергруппы."""
+
+    STATUS_QUEUED = 'queued'
+    STATUS_CREATING = 'creating'
+    STATUS_SUCCESS = 'success'
+    STATUS_ERROR = 'error'
+    STATUS_CHOICES = (
+        (STATUS_QUEUED, 'В очереди'),
+        (STATUS_CREATING, 'Создаётся'),
+        (STATUS_SUCCESS, 'Создана'),
+        (STATUS_ERROR, 'Ошибка'),
+    )
+    ENTITY_CONTACT = 'contact'
+    ENTITY_COMPANY = 'company'
+    ENTITY_CHOICES = ((ENTITY_CONTACT, 'Контакт'), (ENTITY_COMPANY, 'Компания'))
+
+    request_key = models.CharField('Ключ идемпотентности', max_length=255, unique=True)
+    entity_type = models.CharField('Тип сущности Bitrix', max_length=16, choices=ENTITY_CHOICES)
+    entity_id = models.CharField('ID сущности Bitrix', max_length=64)
+    title = models.CharField('Название группы', max_length=255)
+    requested_user_refs = models.JSONField('Запрошенные участники', default=list, blank=True)
+    telegram_chat_id = models.CharField('Telegram chat ID', max_length=64, blank=True, default='', db_index=True)
+    status = models.CharField('Статус', max_length=16, choices=STATUS_CHOICES, default=STATUS_QUEUED, db_index=True)
+    result_data = models.JSONField('Результат', default=dict, blank=True)
+    error_message = models.TextField('Ошибка', blank=True, default='')
+    created_at = models.DateTimeField('Создано', auto_now_add=True)
+    updated_at = models.DateTimeField('Обновлено', auto_now=True)
+
+    class Meta:
+        verbose_name = 'Создание Telegram-группы'
+        verbose_name_plural = 'Создания Telegram-групп'
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['entity_type', 'entity_id'])]
+
+    def __str__(self) -> str:
+        return f'{self.title} [{self.get_status_display()}]'
 

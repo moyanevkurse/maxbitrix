@@ -8,7 +8,7 @@ Long polling — вебхук не нужен.
 import logging
 
 from asgiref.sync import sync_to_async
-from telegram import Update, Chat
+from telegram import Update, Chat, ChatMember
 from telegram.ext import (
     Application,
     ContextTypes,
@@ -88,8 +88,46 @@ def _sync_partner_with_bitrix(chat_id: str, chat_type: str, title: str) -> None:
         logger.info('Битрикс: создан контакт для чата %s (%s)', chat_id, name)
 
 
-async def _ensure_partner(chat_id: str, chat_type: str, title: str) -> None:
+def _sync_group_with_bitrix_by_messenger_number(chat_id: str, title: str, update_type: str) -> None:
+    """Связать ручную TG-группу по номеру в title, как MAX-группу."""
+    try:
+        from openlines.telegram_group_bitrix_sync import sync_telegram_group_to_bitrix_by_title
+
+        result = sync_telegram_group_to_bitrix_by_title(
+            chat_id=chat_id,
+            title=title,
+            update_type=update_type,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            'Telegram group Bitrix sync failed: chat_id=%s title=%r error=%s',
+            chat_id, title, exc, exc_info=True,
+        )
+        return
+    if result.get('ok'):
+        logger.info(
+            'Telegram group Bitrix sync: chat_id=%s group_number=%s contacts=%s companies=%s',
+            chat_id, result.get('group_number'), result.get('contact_matches'), result.get('company_matches'),
+        )
+    else:
+        logger.info(
+            'Telegram group Bitrix sync skipped: chat_id=%s title=%r reason=%s',
+            chat_id, title, result.get('error'),
+        )
+
+
+async def _ensure_partner(
+    chat_id: str,
+    chat_type: str,
+    title: str,
+    *,
+    group_sync_enabled: bool = True,
+) -> None:
     await sync_to_async(_ensure_partner_sync)(chat_id, chat_type, title)
+    if chat_type == Partner.TYPE_GROUP:
+        if group_sync_enabled:
+            await sync_to_async(_sync_group_with_bitrix_by_messenger_number)(chat_id, title, 'bot_added_or_message')
+        return
     await sync_to_async(_sync_partner_with_bitrix)(chat_id, chat_type, title)
 
 
@@ -159,8 +197,17 @@ async def on_my_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     if not data:
         return
     chat_id, chat_type, title = data
-    await _ensure_partner(chat_id, chat_type, title)
+    new_status = update.my_chat_member.new_chat_member.status
+    bot_is_in_group = new_status in {
+        ChatMember.MEMBER,
+        ChatMember.ADMINISTRATOR,
+        ChatMember.RESTRICTED,
+    }
+    await _ensure_partner(
+        chat_id, chat_type, title,
+        group_sync_enabled=chat_type != Partner.TYPE_GROUP or bot_is_in_group,
 
+    )
 
 def build_application(token: str) -> Application:
     app = Application.builder().token(token).build()

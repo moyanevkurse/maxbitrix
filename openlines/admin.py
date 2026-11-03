@@ -4,9 +4,14 @@ from django.contrib import admin
 from .models import (
     BitrixPortal,
     ExternalChat,
+    MaxGroupCreatorConfig,
     MaxGroupStaffMember,
     MaxGroupWelcomeAttachment,
     MaxGroupWelcomeConfig,
+    TelegramGroupProvision,
+    TelegramGroupStaffMember,
+    TelegramGroupWelcomeAttachment,
+    TelegramGroupWelcomeConfig,
 )
 
 
@@ -81,6 +86,37 @@ class MaxGroupWelcomeConfigAdmin(admin.ModelAdmin):
         return False
 
 
+@admin.register(MaxGroupCreatorConfig)
+class MaxGroupCreatorConfigAdmin(admin.ModelAdmin):
+    list_display = ('entity_type', 'account_name', 'profile_dir', 'token_file', 'updated_at')
+    list_editable = ('account_name',)
+    list_filter = ('entity_type',)
+    search_fields = ('account_name', 'profile_dir', 'token_file')
+    readonly_fields = ('created_at', 'updated_at')
+    fieldsets = (
+        ('Маршрутизация', {
+            'fields': ('entity_type', 'account_name'),
+        }),
+        ('Данные MAX-аккаунта', {
+            'fields': ('profile_dir', 'token_file'),
+            'description': (
+                'Укажите отдельный профиль и файл WS-токена для аккаунта, который создаёт группы. '
+                'Текущий MAX-бот остаётся общим для контактов и компаний.'
+            ),
+        }),
+        ('Служебное', {
+            'fields': ('created_at', 'updated_at'),
+        }),
+    )
+
+    def has_add_permission(self, request):
+        # Две записи (контакты и компании) создаются миграцией.
+        return MaxGroupCreatorConfig.objects.count() < len(MaxGroupCreatorConfig.ENTITY_CHOICES)
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
 @admin.register(MaxGroupStaffMember)
 class MaxGroupStaffMemberAdmin(admin.ModelAdmin):
     list_display = (
@@ -116,3 +152,49 @@ class MaxGroupStaffMemberAdmin(admin.ModelAdmin):
         }),
     )
     readonly_fields = ('created_at', 'updated_at')
+
+class TelegramGroupWelcomeAttachmentInline(admin.TabularInline):
+    model = TelegramGroupWelcomeAttachment
+    extra = 1
+    fields = ('file', 'created_at')
+    readonly_fields = ('created_at',)
+
+
+@admin.register(TelegramGroupWelcomeConfig)
+class TelegramGroupWelcomeConfigAdmin(admin.ModelAdmin):
+    list_display = ('is_active', 'updated_at', 'created_at', 'welcome_preview')
+    list_filter = ('is_active',)
+    readonly_fields = ('created_at', 'updated_at')
+    inlines = (TelegramGroupWelcomeAttachmentInline,)
+
+    def welcome_preview(self, obj):
+        text = (obj.welcome_text or '').strip()
+        return text[:80] + ('…' if len(text) > 80 else '')
+
+    welcome_preview.short_description = 'Превью'
+
+    def has_add_permission(self, request):
+        return not TelegramGroupWelcomeConfig.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(TelegramGroupStaffMember)
+class TelegramGroupStaffMemberAdmin(admin.ModelAdmin):
+    list_display = (
+        'name', 'telegram_username', 'telegram_user_id', 'bitrix_user_id',
+        'add_for_contact', 'add_for_company', 'sort_order', 'is_active',
+    )
+    list_editable = ('add_for_contact', 'add_for_company', 'sort_order', 'is_active')
+    list_filter = ('is_active', 'add_for_contact', 'add_for_company')
+    search_fields = ('name', 'telegram_username', 'bitrix_user_id')
+    ordering = ('sort_order', 'id')
+
+
+@admin.register(TelegramGroupProvision)
+class TelegramGroupProvisionAdmin(admin.ModelAdmin):
+    list_display = ('title', 'entity_type', 'entity_id', 'telegram_chat_id', 'status', 'created_at', 'updated_at')
+    list_filter = ('status', 'entity_type')
+    search_fields = ('title', 'entity_id', 'telegram_chat_id', 'request_key')
+    readonly_fields = ('request_key', 'telegram_chat_id', 'status', 'result_data', 'error_message', 'created_at', 'updated_at')

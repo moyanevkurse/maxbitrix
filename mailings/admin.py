@@ -311,7 +311,7 @@ class TemplateAdmin(admin.ModelAdmin):
         def _render_page(*, preview=None, selected_template_id='', selected_group_ids=None, selected_partner_ids=None,
                          selected_chat_kinds=None, city_filter='', sleep_status='',
                          selected_company_types=None, selected_potentials=None,
-                         selected_contact_job_titles=None):
+                         selected_contact_job_titles=None, selected_channels=None):
             templates = Template.objects.all().order_by('name')
             context = {
                 **self.admin_site.each_context(request),
@@ -327,11 +327,15 @@ class TemplateAdmin(admin.ModelAdmin):
                 'selected_company_types': selected_company_types or [],
                 'selected_potentials': selected_potentials or [],
                 'selected_contact_job_titles': selected_contact_job_titles or [],
+                'selected_channels': selected_channels or [],
             }
             return render(request, 'admin/mailings/run_mailing.html', context)
 
         if request.method == 'POST':
-            from .views import _collect_recipients_from_filters_data
+            from .views import (
+                _collect_recipients_from_filters_data,
+                _normalize_mailing_channels,
+            )
 
             action = str(request.POST.get('_action') or 'queue').strip()
             template_id = str(request.POST.get('template_id') or '').strip()
@@ -343,6 +347,24 @@ class TemplateAdmin(admin.ModelAdmin):
             company_types = [v.strip() for v in request.POST.getlist('company_types') if str(v).strip()]
             potentials = [v.strip() for v in request.POST.getlist('potentials') if str(v).strip()]
             contact_job_titles = [v.strip() for v in request.POST.getlist('contact_job_titles') if str(v).strip()]
+            channels = _normalize_mailing_channels(
+                request.POST.getlist('channels'),
+                default_to_max=False,
+            )
+            if not channels:
+                messages.error(request, 'Выберите хотя бы один канал доставки: MAX или Telegram.')
+                return _render_page(
+                    selected_template_id=template_id,
+                    selected_group_ids=group_ids,
+                    selected_partner_ids=partner_ids,
+                    selected_chat_kinds=chat_kinds,
+                    city_filter=city_filter,
+                    sleep_status=sleep_status,
+                    selected_company_types=company_types,
+                    selected_potentials=potentials,
+                    selected_contact_job_titles=contact_job_titles,
+                    selected_channels=[],
+                )
             if action == 'queue' and not template_id:
                 messages.error(request, 'Выберите шаблон.')
                 return _render_page(
@@ -355,6 +377,7 @@ class TemplateAdmin(admin.ModelAdmin):
                     selected_company_types=company_types,
                     selected_potentials=potentials,
                     selected_contact_job_titles=contact_job_titles,
+                    selected_channels=channels,
                 )
 
             recipients_data = _collect_recipients_from_filters_data(
@@ -366,6 +389,7 @@ class TemplateAdmin(admin.ModelAdmin):
                 potentials=potentials,
                 chat_kinds=chat_kinds,
                 contact_job_titles=contact_job_titles,
+                channels=channels,
             )
             partner_pks = recipients_data['partner_pks']
             recipient_chat_ids = recipients_data['recipient_chat_ids']
@@ -401,6 +425,7 @@ class TemplateAdmin(admin.ModelAdmin):
                     selected_company_types=company_types,
                     selected_potentials=potentials,
                     selected_contact_job_titles=contact_job_titles,
+                    selected_channels=channels,
                 )
 
             if action == 'preview':
@@ -489,7 +514,7 @@ class TemplateAdmin(admin.ModelAdmin):
 
 @admin.register(Mailing)
 class MailingAdmin(admin.ModelAdmin):
-    list_display = ('id', 'template', 'partner_or_recipient', 'batch_id_short', 'sent_at', 'status', 'error_message_short')
+    list_display = ('id', 'template', 'partner_or_recipient', 'delivery_channel', 'batch_id_short', 'sent_at', 'status', 'error_message_short')
     list_filter = ('status', 'sent_at', 'batch_id')
     search_fields = ('template__name', 'partner__title', 'partner__chat_id', 'recipient_chat_id')
     readonly_fields = ('template', 'partner', 'recipient_chat_id', 'batch_id', 'sent_at', 'status', 'error_message', 'sent_by')
@@ -504,6 +529,11 @@ class MailingAdmin(admin.ModelAdmin):
             return obj.partner
         return obj.recipient_chat_id or '—'
     partner_or_recipient.short_description = 'Получатель'
+
+    def delivery_channel(self, obj):
+        chat_id = obj.recipient_chat_id or (obj.partner.chat_id if obj.partner else '')
+        return 'MAX' if str(chat_id or '').startswith('max:') else 'Telegram'
+    delivery_channel.short_description = 'Канал'
 
     def error_message_short(self, obj):
         return (obj.error_message[:50] + '…') if obj.error_message and len(obj.error_message) > 50 else (obj.error_message or '—')
